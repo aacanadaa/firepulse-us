@@ -332,8 +332,12 @@ Source: [`apps/api/src/realtime/hub.ts`](../apps/api/src/realtime/hub.ts),
   covered one.
 - `stats` is sent at 1 Hz with **no geometry**, so the HUD can tick without
   touching the map. Ages are computed client-side from `observedAt`.
-- Messages are JSON + `permessage-deflate`; 8 000 hotspots compress to a few
-  hundred KB once, then only increments flow.
+- The initial snapshot budget is 10 000 hotspots. When a 24 h window exceeds it,
+  `HotspotLog.snapshot` keeps the newest 2 200 and samples older entries
+  uniformly by time, so replay still spans the full day instead of collapsing
+  to the last few hours.
+- Messages are JSON + `permessage-deflate`; the initial payload compresses to a
+  few hundred KB, then only increments flow.
 
 ### Fan-out and scale
 
@@ -353,17 +357,29 @@ Source: [`components/MapCanvas.tsx`](../apps/web/src/components/MapCanvas.tsx),
 | Layer | Engine | Technique |
 |---|---|---|
 | Land, states, lakes, rivers, cities | **MapLibre GL** | PMTiles v3 vector archive, self-hosted, byte-range fetched |
-| Official perimeters | **MapLibre** | red diagonal **hatch pattern** + base fill + blurred glow + solid line |
-| Estimated zones | **deck.gl** | PolygonLayer fill + dashed `PathLayer` outline (PathStyleExtension) + pulsing halo + centroid beacon |
-| Thermal hotspots | **deck.gl** | `ScatterplotLayer` accessors packed into GPU attribute buffers, age ramp, radius by √FRP, warm additive glow layer |
+| Basemaps | **MapLibre / raster** | Atlas + Ink (self-hosted PMTiles), Topographic (Esri), Satellite (EOX Sentinel-2 cloudless) |
+| Official perimeters | **MapLibre** | forest **hatch pattern** + base fill + contrasting casing + solid line |
+| Estimated zones | **deck.gl** | PolygonLayer fill + dashed `PathLayer` outline (PathStyleExtension) + pale casing |
+| Thermal hotspots | **deck.gl** | `ScatterplotLayer` accessors packed into GPU attribute buffers, ember→stone age ramp, radius by √FRP |
 | H3 cells | **deck.gl** | `H3HexagonLayer` from incident cell arrays |
-| Labels / beacons | **deck.gl** | SDF `TextLayer` + stroked `ScatterplotLayer` |
-| Wind particles | **Canvas 2D** | 1 400 particles advected through a bilinear u/v field, screen-space constant-length streaks, fade trails |
+| Labels / beacons | **deck.gl** | SDF `TextLayer` with per-basemap outline colour; labels sit at the polygon's north edge |
+| Wind particles | **Canvas 2D** | ~950 graphite particles advected through a bilinear u/v field, screen-space streaks |
+
+**Design system.** Warm alabaster canvas (`#F7F7F5`), white surfaces, 1px
+`#E5E5E5` hairlines, carbon type, Forest (`#1B4332`) for official data and
+International Orange (`#FF4F00`) for provisional data. Inter for UI, JetBrains
+Mono for metadata. No shadows, gradients, glow or pill controls; 6px radii,
+150ms ease-out.
+
+**Basemap switching.** Four styles share one overlay contract. Switching calls
+`map.setStyle`, then re-installs the official source/layers synchronously from
+pre-generated hatch bitmaps (one per theme). A `styledata` fallback plus an
+idle retry makes the install resilient to MapLibre's event ordering; the
+existing `official-perimeters` source is updated in place as data arrives.
 
 **MapLibre + deck.gl integration** uses `MapboxOverlay` in non-interleaved mode.
 Deck owns picking for estimates, hotspots and beacons; MapLibre owns the hatched
-official fill and the basemap. `autoHighlight` and a custom picking layer provide
-hover/selection without duplicating geometry.
+official fill and the basemap.
 
 **Performance rules**
 
@@ -375,7 +391,7 @@ hover/selection without duplicating geometry.
 - The 24 h time scrubber filters client-side. Playback updates the cursor at
   8 Hz, not 60 Hz, so the 5 000–20 000 hotspot pass stays under a frame.
 - Wind particles live on their own canvas and never enter deck's attribute
-  pipeline; count adapts to viewport area (~1 400 max).
+  pipeline; count adapts to viewport area (~950 max).
 
 **PMTiles.** The basemap is a 0.5 MB PMTiles v3 archive built from Natural Earth
 by [`scripts/build-basemap.mjs`](../scripts/build-basemap.mjs). The npm `pmtiles`

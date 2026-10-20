@@ -2,7 +2,7 @@
 
 import { useCallback, useRef } from "react";
 import type { TimelineBucket, TimelineEvent } from "@/lib/store";
-import { formatAge, formatClock, formatClockShort } from "@/lib/format";
+import { formatAge, formatClock } from "@/lib/format";
 import { Icon } from "./ui";
 
 interface Props {
@@ -18,8 +18,6 @@ interface Props {
   onPlay: () => void;
   onSpeed: (speed: number) => void;
   onLive: () => void;
-  hasSelection: boolean;
-  sidebarOpen: boolean;
 }
 
 const SPEEDS = [
@@ -42,27 +40,25 @@ export default function Timeline({
   onPlay,
   onSpeed,
   onLive,
-  hasSelection,
-  sidebarOpen,
 }: Props) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragging = useRef(false);
 
-  const effective = cursor ?? now;
   const live = cursor == null;
+  const effective = live ? now : cursor;
   const fraction = live
     ? 1
     : Math.max(0, Math.min(1, (effective - from) / Math.max(1, to - from)));
   const max = Math.max(1, ...buckets.map((b) => b.hotspots));
   const offset = Math.max(0, now - effective);
 
-  const seekFromEvent = useCallback(
+  const seek = useCallback(
     (clientX: number) => {
       const el = trackRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const f = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      if (f > 0.995) {
+      if (f > 0.997) {
         onSeek(null);
         return;
       }
@@ -74,11 +70,10 @@ export default function Timeline({
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     dragging.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
-    seekFromEvent(e.clientX);
+    seek(e.clientX);
   };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragging.current) return;
-    seekFromEvent(e.clientX);
+    if (dragging.current) seek(e.clientX);
   };
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     dragging.current = false;
@@ -90,108 +85,34 @@ export default function Timeline({
   };
 
   return (
-    <div
-      className={`glass timeline ${sidebarOpen ? "" : "mobile-visible"}`}
-      style={{
-        position: "absolute",
-        left: sidebarOpen ? 408 : 16,
-        right: 16,
-        bottom: 16,
-        zIndex: 25,
-        borderRadius: 14,
-        padding: "10px 14px 8px",
-        transition: "left 0.28s cubic-bezier(0.2,0.9,0.25,1)",
-        pointerEvents: "auto",
-      }}
-      role="group"
-      aria-label="Timeline and replay"
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div className="timeline" role="group" aria-label="Timeline and replay">
+      <div className="tl-controls">
         <button
           type="button"
+          className={`play-btn ${playing ? "" : "paused"}`}
           onClick={onPlay}
-          className="icon-btn"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 9,
-            color: playing ? "#0a0d12" : "#e8edf5",
-            background: playing ? "#ffb020" : "rgba(255,255,255,0.05)",
-            borderColor: playing ? "#ffb020" : "var(--hairline)",
-          }}
           title={playing ? "Pause replay" : "Replay the last 24 hours"}
           aria-label={playing ? "Pause replay" : "Play replay"}
         >
-          <Icon name={playing ? "pause" : "play"} size={13} />
+          <Icon name={playing ? "pause" : "play"} size={12} strokeWidth={1.8} />
         </button>
 
-        <div style={{ minWidth: 0, display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>
+        <div className="tl-time">
+          <span className="t">
             {formatClock(effective)}
-          </span>
-          <span className="mono" style={{ fontSize: 9.5, color: "#7d8797" }}>
-            PT
-          </span>
-          {!live ? (
-            <span
-              className="mono"
-              style={{
-                fontSize: 9.5,
-                color: "#9ad9f8",
-                padding: "1px 5px",
-                borderRadius: 4,
-                background: "rgba(56,189,248,0.09)",
-                border: "1px solid rgba(56,189,248,0.18)",
-              }}
-            >
-              −{formatAge(offset)} from live
+            <span className="mono" style={{ fontSize: 8.5, color: "var(--faint)", marginLeft: 5 }}>
+              PT
             </span>
-          ) : (
-            <span
-              className="mono"
-              style={{
-                fontSize: 9,
-                color: live ? "#8af0b4" : "#9ad9f8",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-              }}
-            >
-              <span className="live-dot" style={{ width: 5, height: 5 }} />
-              LIVE
-            </span>
-          )}
-        </div>
-
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
-          {SPEEDS.map((s) => (
-            <button
-              key={s.value}
-              type="button"
-              className={`chip ${speed === s.value ? "active" : ""}`}
-              style={{ fontSize: 9, padding: "2px 6px" }}
-              onClick={() => onSpeed(s.value)}
-              title={`Replay ${s.label} of simulated time per second`}
-            >
-              {s.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={`chip ${live ? "active" : ""}`}
-            style={{ fontSize: 9, padding: "2px 7px", marginLeft: 4 }}
-            onClick={onLive}
-            title="Return to the live feed"
-          >
-            LIVE
-          </button>
+          </span>
+          <span className="d">
+            {live ? "Live · trailing 24 hours" : `−${formatAge(offset)} from live`}
+          </span>
         </div>
       </div>
 
       <div
         ref={trackRef}
-        className="scrub-track"
-        style={{ marginTop: 6 }}
+        className="scrub"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -208,70 +129,67 @@ export default function Timeline({
         }}
       >
         <div className="scrub-bars">
-          {buckets.map((b, i) => {
+          {buckets.map((b) => {
             const t = Date.parse(b.t);
             const height =
               b.hotspots === 0
                 ? 2
-                : 3 + (Math.log1p(b.hotspots) / Math.log1p(max)) * 28;
+                : 2 + (Math.log1p(b.hotspots) / Math.log1p(max)) * 20;
+            const past = t <= effective;
+            const hot = b.hotspots > max * 0.55;
             return (
               <div
                 key={b.t}
-                className={`scrub-bar ${t > effective ? "cool" : b.hotspots > max * 0.4 ? "hot" : ""}`}
+                className={`scrub-bar ${past ? "past" : ""} ${hot ? "hot" : ""}`}
                 style={{ height: `${height}px` }}
-                title={`${formatClockShort(t)} · ${b.hotspots} hotspots · ${Math.round(b.frp)} MW`}
-                data-index={i}
+                title={`${formatClock(t)} · ${b.hotspots} hotspots · ${Math.round(b.frp)} MW`}
               />
             );
           })}
         </div>
 
-        {events
-          .map((ev) => {
-            const t = Date.parse(ev.officialSince);
-            if (t < from || t > to) return null;
-            const left = ((t - from) / Math.max(1, to - from)) * 100;
-            return (
-              <div
-                key={ev.id + ev.officialSince}
-                className="official-tick"
-                style={{ left: `${left}%` }}
-                title={`${ev.name} mapped officially at ${formatClockShort(t)}`}
-              />
-            );
-          })
-          .filter(Boolean)}
+        <div className="scrub-base" />
 
-        {!live ? <div className="scrub-head" style={{ left: `${fraction * 100}%` }} /> : null}
+        {events.map((ev) => {
+          const t = Date.parse(ev.officialSince);
+          if (t < from || t > to) return null;
+          const left = ((t - from) / Math.max(1, to - from)) * 100;
+          return (
+            <div
+              key={ev.id + ev.officialSince}
+              className="event-tick"
+              style={{ left: `${left}%` }}
+              title={`${ev.name} officially mapped at ${formatClock(t)}`}
+            />
+          );
+        })}
+
+        <div className="scrub-head" style={{ left: `${fraction * 100}%` }} />
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: 8.5,
-          color: "#5d6675",
-          marginTop: 2,
-        }}
-      >
-        <span className="mono">24H AGO</span>
-        <span className="mono" style={{ color: "#7d8797" }}>
-          {formatClockShort(from)} — {formatClockShort(to)} PT · hotspots coloured by age at cursor
-        </span>
-        <span className="mono">NOW</span>
+      <div className="tl-right">
+        {SPEEDS.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            className={`speed ${speed === s.value ? "active" : ""}`}
+            onClick={() => onSpeed(s.value)}
+            title={`Advance ${s.label.replace("/s", " minutes")} per real second`}
+            aria-pressed={speed === s.value}
+          >
+            {s.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={`live-btn ${live ? "on" : ""}`}
+          onClick={onLive}
+          title="Return to the live feed"
+        >
+          <span className="dot" />
+          Live
+        </button>
       </div>
-
-      {hasSelection ? (
-        <div
-          style={{
-            position: "absolute",
-            right: 14,
-            top: -22,
-            fontSize: 8.5,
-            color: "#8d96a5",
-          }}
-        />
-      ) : null}
     </div>
   );
 }

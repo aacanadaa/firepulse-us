@@ -33,18 +33,24 @@ from the merge ledger: `official_since − first_detected_at`.
 
 ## Feature tour
 
-- **Split-layer map.** Official perimeters are red, solid and diagonally
-  hatched. Early estimates are amber, dashed, pulsing, with a centroid beacon.
-  Satellite heat is coloured by age (white-yellow < 1 h, orange 1–6 h, dark red
-  6–24 h) and sized by Fire Radiative Power.
+- **Editorial cartography.** A warm alabaster interface with 1px structural
+  hairlines, Inter + JetBrains Mono, and exactly two data accents: **Forest**
+  for surveyed ground truth, **International Orange** for provisional early
+  estimates. Official perimeters are solid, forest-green and hatched; early
+  zones are dashed orange with a north-edge label. Thermal detections fade from
+  ember to stone over 24 hours and scale with Fire Radiative Power.
 - **Live incident feed.** Sorted by fastest-growing / newly-detected /
-  confidence, with source tags (`GOES-18`, `CAD`, `NIFC`, …), confidence badges,
-  area, growth rate, FRP, hotspot count and time-since-last-signal to the second.
+  confidence, with source tags (`GOES-18`, `CAD`, `NIFC`, …), a confidence score
+  and bar, area, growth rate, hotspot count and a second-level age.
 - **Evidence-first detail panel.** The confidence equation, each factor, every
   source's weight, the merge head start, a 6 h FRP/confidence sparkline,
   provenance and neighbouring incidents.
-- **Animated wind.** 1 400 canvas particles advected through a synthetic HRRR
-  u/v field, colour-coded calm → critical spread.
+- **Four basemaps, one variable.** *Atlas* (local Natural Earth vector plate),
+  *Ink* (carbon night plate), *Topographic* (Esri) and *Satellite*
+  (EOX Sentinel-2 cloudless). The selected map is persisted; overlays, labels
+  and hatches re-theme to stay legible.
+- **Animated wind.** Monochrome graphite particles advected through a
+  synthetic HRRR u/v field, so wind never becomes a second colour system.
 - **24 h scrubber.** Replay thermal progression against the moment each official
   perimeter was drawn; official ticks on the timeline mark those publications.
 - **H3 density.** Toggle the hexagonal cells that give every fused zone its
@@ -57,9 +63,43 @@ from the merge ledger: `official_since − first_detected_at`.
 |---|---|
 | ![Detail](./docs/screenshot-detail.png) | ![Replay](./docs/screenshot-replay.png) |
 
-| Perimeter detail | H3 identity cells | Mobile |
+| Official perimeter | H3 identity cells | Mobile |
 |---|---|---|
 | ![Map](./docs/screenshot-map.png) | ![H3](./docs/screenshot-h3.png) | ![Mobile](./docs/screenshot-mobile.png) |
+
+| Ink plate | Topographic | Satellite |
+|---|---|---|
+| ![Ink](./docs/screenshot-ink.png) | ![Topo](./docs/screenshot-topo.png) | ![Satellite](./docs/screenshot-satellite.png) |
+
+---
+
+## Design system
+
+A deliberate light interface rather than a dashboard template.
+
+| Token | Value | Use |
+|---|---|---|
+| Canvas | `#F7F7F5` | warm alabaster app background |
+| Surface | `#FFFFFF` | panels, header, inspector |
+| Ink | `#111111` | primary type, primary buttons |
+| Muted | `#6B6B6B` | secondary type and metadata |
+| Hairline | `#E5E5E5` | every structural boundary |
+| Forest | `#1B4332` | official / surveyed data |
+| International Orange | `#FF4F00` | early estimates and provisional actions |
+
+- **Type:** Inter variable for UI, JetBrains Mono for labels, numbers and
+  timestamps. Headings are 550–600 weight with `-0.03em` tracking; section
+  kickers are 9.5px uppercase mono.
+- **Structure:** exposed hairlines and a fixed app grid. The sidebar, map and
+  inspector are columns, not floating cards. The timeline is a full-width dock.
+- **Controls:** 6px radii, 1px borders, 150ms ease-out. Primary actions are
+  solid carbon; no pills, glows, gradients or hover scale.
+- **Charts:** single-weight lines and 2px factor bars. No area gradients.
+- **Basemaps:** Atlas and Ink are self-hosted PMTiles; Topographic and
+  Satellite are CORS-safe raster providers with muted raster paint.
+
+The only animation is functional: the dashed estimate boundary breathes
+slightly, the boot progress line advances, and wind particles move.
 
 ---
 
@@ -200,8 +240,8 @@ firepulse/
 │   │   │   └── server.ts     HTTP API + WS + webhooks + metrics
 │   │   └── test/             31 tests: model, parsers, DBSCAN, merge, replay
 │   └── web/                  Next.js App Router client
-│       ├── src/components/   MapCanvas, Sidebar, DetailPanel, Timeline, HUD
-│       ├── src/lib/          layers.ts (deck), store.ts (deltas), select.ts
+│       ├── src/components/   AppHeader, MapCanvas, Sidebar, DetailPanel, Timeline
+│       ├── src/lib/          places.ts (4 basemaps), layers.ts, store.ts, select.ts
 │       └── public/basemap/   PMTiles v3 (built from Natural Earth)
 ├── packages/protocol/        shared types, confidence model, geodesy, DBSCAN
 ├── db/migrations/            PostGIS schema, clustering SQL, merge functions

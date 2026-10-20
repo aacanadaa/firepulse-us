@@ -33,7 +33,7 @@ const BASE =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson";
 
 const LAYERS = [
-  { name: "land", file: "ne_110m_land", minzoom: 0, maxzoom: 6 },
+  { name: "land", file: "ne_50m_land", minzoom: 0, maxzoom: 6 },
   { name: "countries", file: "ne_50m_admin_0_boundary_lines_land", minzoom: 1, maxzoom: 6 },
   { name: "states", file: "ne_50m_admin_1_states_provinces_lines", minzoom: 2, maxzoom: 6 },
   { name: "lakes", file: "ne_50m_lakes", minzoom: 2, maxzoom: 6 },

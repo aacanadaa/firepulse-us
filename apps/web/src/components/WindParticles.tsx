@@ -3,15 +3,14 @@
 import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import type { WindField } from "@firepulse/protocol";
+import type { MapTheme } from "@/lib/places";
 
 interface Props {
   map: maplibregl.Map | null;
   field: WindField | null;
   enabled: boolean;
+  theme: MapTheme;
 }
-
-const PALETTE = ["#3f6b86", "#4f93b8", "#7dd3fc", "#a7f3d0", "#fcd34d", "#fb923c", "#fb7185"];
-const PALETTE_LEN = PALETTE.length;
 
 function sampleField(
   field: WindField,
@@ -43,18 +42,17 @@ function sampleField(
 }
 
 /**
- * GPU-friendly 2D canvas wind field. Particles advect through the HRRR-style
- * u/v grid; each frame fades the previous stroke, producing wind streaks that
- * scale with the current zoom and never touch deck.gl's attribute buffers.
- *
- * Colour encodes wind speed: teal (calm) → cyan → amber → red (critical
- * spread conditions).
+ * Monochrome wind texture. Particles exist to show direction and relative
+ * velocity — not to become a second colour system. Short graphite strokes,
+ * alpha by speed, no glow.
  */
-export default function WindParticles({ map, field, enabled }: Props) {
+export default function WindParticles({ map, field, enabled, theme }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const fieldRef = useRef(field);
   fieldRef.current = field;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -64,6 +62,7 @@ export default function WindParticles({ map, field, enabled }: Props) {
 
     let dpr = Math.min(2, window.devicePixelRatio || 1);
     let running = true;
+
     const resize = () => {
       const el = map.getContainer();
       dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -77,7 +76,7 @@ export default function WindParticles({ map, field, enabled }: Props) {
 
     const maxParticles = () => {
       const area = canvas.width * canvas.height;
-      return Math.max(320, Math.min(1400, Math.round(area / 5200)));
+      return Math.max(220, Math.min(950, Math.round(area / 6800)));
     };
 
     let count = maxParticles();
@@ -87,7 +86,7 @@ export default function WindParticles({ map, field, enabled }: Props) {
     let py = new Float32Array(count);
     let age = new Uint16Array(count);
     let life = new Uint16Array(count);
-    let initialised = new Uint8Array(count);
+    let ready = new Uint8Array(count);
 
     const respawn = (i: number) => {
       const f = fieldRef.current;
@@ -99,8 +98,8 @@ export default function WindParticles({ map, field, enabled }: Props) {
       lon[i] = w + Math.random() * Math.max(0.0001, e - w);
       lat[i] = s + Math.random() * Math.max(0.0001, n - s);
       age[i] = 0;
-      life[i] = 130 + Math.floor(Math.random() * 300);
-      initialised[i] = 0;
+      life[i] = 80 + Math.floor(Math.random() * 200);
+      ready[i] = 0;
     };
 
     for (let i = 0; i < count; i++) {
@@ -109,27 +108,27 @@ export default function WindParticles({ map, field, enabled }: Props) {
     }
 
     let last = performance.now();
-    let frameCount = 0;
+    let frame = 0;
 
-    const frame = (now: number) => {
+    const tick = (now: number) => {
       if (!running) return;
-      frameRef.current = requestAnimationFrame(frame);
+      frameRef.current = requestAnimationFrame(tick);
       if (!enabled || !fieldRef.current) return;
 
       const dt = Math.min(64, now - last);
       last = now;
-      frameCount++;
+      frame++;
 
-      const targetCount = maxParticles();
-      if (Math.abs(targetCount - count) > count * 0.4) {
-        count = targetCount;
+      const target = maxParticles();
+      if (Math.abs(target - count) > count * 0.35) {
+        count = target;
         lon = new Float32Array(count);
         lat = new Float32Array(count);
         px = new Float32Array(count);
         py = new Float32Array(count);
         age = new Uint16Array(count);
         life = new Uint16Array(count);
-        initialised = new Uint8Array(count);
+        ready = new Uint8Array(count);
         for (let i = 0; i < count; i++) respawn(i);
       }
 
@@ -137,17 +136,16 @@ export default function WindParticles({ map, field, enabled }: Props) {
       const width = canvas.width;
       const height = canvas.height;
 
-      // Fade previous streaks without accumulating opaque pixels.
       ctx.globalCompositeOperation = "destination-out";
-      ctx.fillStyle = "rgba(0,0,0,0.16)";
+      ctx.fillStyle = "rgba(0,0,0,0.19)";
       ctx.fillRect(0, 0, width, height);
       ctx.globalCompositeOperation = "source-over";
-      ctx.lineWidth = Math.max(1, 1.05 * dpr);
+      ctx.lineWidth = Math.max(0.7, 0.7 * dpr);
       ctx.lineCap = "round";
 
-      // Keep streak length roughly constant in screen space across zooms.
       const zoomScale = Math.min(1.4, Math.pow(1.85, 5.2 - map.getZoom()));
-      const step = (dt / 1000) * 0.075 * zoomScale;
+      const step = (dt / 1000) * 0.06 * zoomScale;
+      const t = themeRef.current;
 
       for (let i = 0; i < count; i++) {
         const sample = sampleField(f, lon[i]!, lat[i]!);
@@ -165,35 +163,28 @@ export default function WindParticles({ map, field, enabled }: Props) {
 
         const p0 = map.project([prevLon, prevLat]);
         const p1 = map.project([lon[i]!, lat[i]!]);
-        const x0 = p0.x * dpr;
-        const y0 = p0.y * dpr;
         const x1 = p1.x * dpr;
         const y1 = p1.y * dpr;
-
         const margin = 40;
-        if (
-          x1 < -margin ||
-          x1 > width + margin ||
-          y1 < -margin ||
-          y1 > height + margin
-        ) {
+        if (x1 < -margin || x1 > width + margin || y1 < -margin || y1 > height + margin) {
           respawn(i);
           continue;
         }
-
-        if (!initialised[i]) {
+        if (!ready[i]) {
           px[i] = x1;
           py[i] = y1;
-          initialised[i] = 1;
+          ready[i] = 1;
           continue;
         }
 
         const relative = Math.min(1, sample.speed / Math.max(4, f.speedMax));
-        const colorIdx = Math.min(PALETTE_LEN - 1, Math.floor(relative * (PALETTE_LEN - 1)));
-        const fadeIn = Math.min(1, age[i]! / 18);
-        const fadeOut = Math.min(1, (life[i]! - age[i]!) / 45);
-        ctx.globalAlpha = Math.max(0, Math.min(0.72, 0.72 * fadeIn * fadeOut));
-        ctx.strokeStyle = PALETTE[colorIdx]!;
+        const fadeIn = Math.min(1, age[i]! / 16);
+        const fadeOut = Math.min(1, (life[i]! - age[i]!) / 40);
+        ctx.globalAlpha = Math.max(
+          0,
+          Math.min(0.5, (0.1 + relative * 0.3) * fadeIn * fadeOut * t.windOpacity),
+        );
+        ctx.strokeStyle = t.wind;
         ctx.beginPath();
         ctx.moveTo(px[i]!, py[i]!);
         ctx.lineTo(x1, y1);
@@ -203,8 +194,7 @@ export default function WindParticles({ map, field, enabled }: Props) {
       }
       ctx.globalAlpha = 1;
 
-      if (frameCount % 90 === 0) {
-        // Keep particles inside the viewport after a pan/zoom.
+      if (frame % 90 === 0) {
         const b = map.getBounds();
         for (let i = 0; i < count; i += 7) {
           if (
@@ -219,7 +209,7 @@ export default function WindParticles({ map, field, enabled }: Props) {
       }
     };
 
-    frameRef.current = requestAnimationFrame(frame);
+    frameRef.current = requestAnimationFrame(tick);
 
     return () => {
       running = false;
@@ -228,6 +218,14 @@ export default function WindParticles({ map, field, enabled }: Props) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
   }, [map, enabled]);
+
+  useEffect(() => {
+    if (!enabled) {
+      const canvas = canvasRef.current;
+      const ctx = canvas?.getContext("2d");
+      if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, [enabled]);
 
   return <canvas id="wind-canvas" ref={canvasRef} aria-hidden />;
 }

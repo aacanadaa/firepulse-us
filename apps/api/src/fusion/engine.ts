@@ -183,7 +183,7 @@ export class FusionEngine {
         if (members.some((m) => pointInRings(m, rings))) return true;
         const distanceKm = haversineKm(c, { lon: o.properties.lon, lat: o.properties.lat });
         if (
-          distanceKm < 8 &&
+          distanceKm < 12 &&
           normalizeName(clusterName) === normalizeName(o.properties.name)
         ) {
           return true;

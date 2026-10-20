@@ -65,22 +65,36 @@ export class HotspotLog {
     return added;
   }
 
-  /** Hotspots in a viewport and time window, newest first, bounded. */
+  /**
+   * Hotspots in a viewport and time window, bounded but time-representative.
+   *
+   * A 24 h window can exceed the client budget; returning only the newest N
+   * would silently destroy replay depth. Keep every recent detection and
+   * sample older ones uniformly, so the scrubber still has the full day.
+   */
   snapshot(
     bbox: [number, number, number, number],
     fromMs: number,
     toMs: number,
     limit: number,
   ): HotspotFeature[] {
-    const out: HotspotFeature[] = [];
-    for (let i = this.entries.length - 1; i >= 0 && out.length < limit; i--) {
-      const e = this.entries[i]!;
+    const matches: Entry[] = [];
+    for (const e of this.entries) {
       if (e.t < fromMs || e.t > toMs) continue;
       const [lon, lat] = e.feature.geometry.coordinates;
       if (lon < bbox[0] || lon > bbox[2] || lat < bbox[1] || lat > bbox[3]) continue;
-      out.push(e.feature);
+      matches.push(e);
     }
-    return out;
+    if (matches.length <= limit) return matches.map((e) => e.feature);
+
+    const keepRecent = Math.min(2200, Math.floor(limit * 0.3));
+    const older = matches.slice(0, matches.length - keepRecent);
+    const recent = matches.slice(-keepRecent);
+    const room = Math.max(1, limit - keepRecent);
+    const stride = Math.max(1, Math.ceil(older.length / room));
+    const sampled: Entry[] = [];
+    for (let i = 0; i < older.length; i += stride) sampled.push(older[i]!);
+    return [...sampled, ...recent].map((e) => e.feature);
   }
 
   /** New hotspots after a client sequence, filtered to its viewport. */

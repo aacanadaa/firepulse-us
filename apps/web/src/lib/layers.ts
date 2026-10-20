@@ -4,33 +4,103 @@ import { PathStyleExtension } from "@deck.gl/extensions";
 import { gridDisk, latLngToCell } from "h3-js";
 import type { HotspotFeature, IncidentFeature } from "@firepulse/protocol";
 import { ageBucket } from "./select";
+import type { MapTheme, MapType } from "./places";
 
 /* ------------------------------------------------------------------ */
 /* Thermal hotspots                                                     */
 /* ------------------------------------------------------------------ */
 
-export const AGE_COLORS = {
-  fresh: [255, 236, 176] as [number, number, number],
-  recent: [255, 148, 58] as [number, number, number],
-  old: [198, 52, 32] as [number, number, number],
-  stale: [116, 44, 42] as [number, number, number],
+type RGBA = [number, number, number, number];
+
+/** deck.gl only accepts numeric RGBA; MapLibre paint accepts CSS strings. */
+export function rgba(color: string, fallbackAlpha = 255): RGBA {
+  const value = color.trim();
+  if (value.startsWith("#")) {
+    const hex = value.slice(1);
+    const full =
+      hex.length === 3
+        ? hex.split("").map((c) => c + c).join("")
+        : hex.length === 8
+          ? hex.slice(0, 6)
+          : hex;
+    const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) : fallbackAlpha;
+    return [
+      parseInt(full.slice(0, 2), 16),
+      parseInt(full.slice(2, 4), 16),
+      parseInt(full.slice(4, 6), 16),
+      a,
+    ];
+  }
+  const match = value.match(/rgba?\(([^)]+)\)/);
+  if (match) {
+    const parts = match[1].split(",").map((p) => Number(p.trim()));
+    return [
+      parts[0] ?? 0,
+      parts[1] ?? 0,
+      parts[2] ?? 0,
+      Math.round((parts[3] ?? 1) * 255),
+    ];
+  }
+  return [17, 17, 17, fallbackAlpha];
+}
+
+interface Ramp {
+  fresh: [number, number, number];
+  recent: [number, number, number];
+  old: [number, number, number];
+  stale: [number, number, number];
+  alpha: { fresh: number; recent: number; old: number; stale: number };
+}
+
+const LIGHT_RAMP: Ramp = {
+  fresh: [255, 79, 0],
+  recent: [163, 63, 11],
+  old: [122, 115, 104],
+  stale: [207, 200, 188],
+  alpha: { fresh: 245, recent: 230, old: 200, stale: 140 },
 };
 
-export const AGE_ALPHA = { fresh: 245, recent: 225, old: 195, stale: 120 };
+const DARK_RAMP: Ramp = {
+  fresh: [255, 106, 43],
+  recent: [194, 65, 12],
+  old: [138, 90, 59],
+  stale: [90, 74, 64],
+  alpha: { fresh: 245, recent: 220, old: 190, stale: 120 },
+};
+
+function rampFor(mapType: MapType): Ramp {
+  return mapType === "atlas" || mapType === "topo" ? LIGHT_RAMP : DARK_RAMP;
+}
+
+export function thermalColor(h: HotspotFeature, now: number, mapType: MapType): RGBA {
+  const ramp = rampFor(mapType);
+  const bucket = ageBucket(now - Date.parse(h.properties.observedAt));
+  const c = ramp[bucket];
+  return [c[0], c[1], c[2], ramp.alpha[bucket]];
+}
+
+export function thermalSwatches(mapType: MapType): { label: string; color: string }[] {
+  const ramp = rampFor(mapType);
+  return [
+    { label: "< 1h", color: `rgb(${ramp.fresh.join(",")})` },
+    { label: "1–6h", color: `rgb(${ramp.recent.join(",")})` },
+    { label: "6–24h", color: `rgb(${ramp.old.join(",")})` },
+    { label: "> 24h", color: `rgb(${ramp.stale.join(",")})` },
+  ];
+}
+
+export function hotspotRadius(frp: number): number {
+  return Math.min(3, 0.85 + Math.sqrt(Math.max(0, frp)) * 0.17);
+}
 
 interface PickableProps {
   pickItems?: HotspotFeature[];
 }
 
-/** ScatterplotLayer subclass that maps a picking index back to its feature. */
 class PickableHotspots extends ScatterplotLayer<HotspotFeature, PickableProps> {
   static layerName = "PickableHotspots";
 
-  getPickingInfo({
-    info,
-  }: {
-    info: { index: number } & Record<string, unknown>;
-  }) {
+  getPickingInfo({ info }: { info: { index: number } & Record<string, unknown> }) {
     const items = this.props.pickItems;
     const object = items && info.index >= 0 ? items[info.index] : null;
     return { ...info, object } as never;
@@ -41,69 +111,33 @@ export function hotspotLayers(opts: {
   items: HotspotFeature[];
   now: number;
   visible: boolean;
-  intensity: number;
+  mapType: MapType;
+  theme: MapTheme;
 }) {
-  const { items, now, visible, intensity } = opts;
-  const opaque = 0.55 + intensity * 0.45;
+  const { items, now, visible, mapType, theme } = opts;
 
   return [
-    new PickableHotspots({
-      id: "hotspot-glow",
-      data: items,
-      pickable: false,
-      filled: true,
-      stroked: false,
-      radiusUnits: "pixels",
-      radiusScale: 1.65,
-      opacity: 0.13 * opaque,
-      getPosition: (h: HotspotFeature) => h.geometry.coordinates as [number, number],
-      getRadius: (h: HotspotFeature) => hotspotRadius(h.properties.frp),
-      // warm ember halo, independent of the hotspot's own age colour
-      getFillColor: [255, 122, 40, 150] as [number, number, number, number],
-      parameters: {
-        blend: true,
-        blendColorOperation: "add",
-        blendColorSrcFactor: "src-alpha",
-        blendColorDstFactor: "one",
-      } as never,
-      visible,
-      updateTriggers: { getFillColor: now, getRadius: now },
-    }),
     new PickableHotspots({
       id: "hotspot-core",
       data: items,
       pickable: true,
       filled: true,
-      stroked: false,
+      stroked: true,
       radiusUnits: "pixels",
-      radiusMinPixels: 1.1,
-      radiusMaxPixels: 4.2,
-      opacity: opaque,
+      radiusMinPixels: 0.9,
+      radiusMaxPixels: 3.2,
+      lineWidthUnits: "pixels",
+      getLineWidth: 0.4,
+      opacity: 0.92,
       antialiasing: true,
       getPosition: (h: HotspotFeature) => h.geometry.coordinates as [number, number],
       getRadius: (h: HotspotFeature) => hotspotRadius(h.properties.frp),
-      getFillColor: (h: HotspotFeature) => hotspotColor(h, now),
+      getFillColor: (h: HotspotFeature) => thermalColor(h, now, mapType),
+      getLineColor: rgba(theme.markerStroke),
       pickItems: items,
       visible,
     }),
   ] as never[];
-}
-
-/**
- * Screen-space radius, deliberately in pixels: a 500 MW pixel should not
- * cover a county when the user zooms in. Size still encodes FRP.
- */
-export function hotspotRadius(frp: number): number {
-  return Math.min(3.8, 1.1 + Math.sqrt(Math.max(0, frp)) * 0.25);
-}
-
-export function hotspotColor(
-  h: HotspotFeature,
-  now: number,
-): [number, number, number, number] {
-  const bucket = ageBucket(now - Date.parse(h.properties.observedAt));
-  const c = AGE_COLORS[bucket];
-  return [c[0], c[1], c[2], AGE_ALPHA[bucket]];
 }
 
 /* ------------------------------------------------------------------ */
@@ -114,115 +148,124 @@ const dashExtension = new PathStyleExtension({ dash: true });
 
 export function estimatedZoneLayer(
   incidents: IncidentFeature[],
-  pulse: number,
   visible: boolean,
+  theme: MapTheme,
 ) {
-  const alpha = Math.round(120 + pulse * 110);
   return new PolygonLayer<IncidentFeature>({
     id: "estimated-zones",
     data: incidents,
     visible,
     pickable: true,
-    autoHighlight: true,
-    highlightColor: [255, 255, 255, 55],
     filled: true,
     getPolygon: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getFillColor: [255, 152, 40, 52],
+    getFillColor: rgba(theme.estimatedFill),
     stroked: false,
   });
 }
 
-/** Dashed, pulsing perimeter for estimates — visually distinct from surveyed lines. */
+/** Pale casing under the dashed boundary keeps it legible on every basemap. */
+export function estimatedCasingLayer(
+  incidents: IncidentFeature[],
+  visible: boolean,
+  theme: MapTheme,
+) {
+  return new PathLayer<IncidentFeature>({
+    id: "estimated-casing",
+    data: incidents,
+    visible,
+    pickable: false,
+    getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
+    getColor: rgba(theme.estimatedCasing),
+    widthUnits: "pixels",
+    getWidth: 3,
+    widthMinPixels: 2.4,
+    jointRounded: false,
+    capRounded: false,
+    opacity: 0.9,
+  });
+}
+
 export function estimatedOutlineLayer(
   incidents: IncidentFeature[],
   pulse: number,
   visible: boolean,
+  theme: MapTheme,
 ) {
-  const alpha = Math.round(130 + pulse * 115);
   return new PathLayer<IncidentFeature>({
-    // PathStyleExtension augments props at runtime; deck's generic types do
-    // not include getDashArray on PathLayer, hence the cast.
     id: "estimated-outline",
     data: incidents,
     visible,
     pickable: false,
     getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getColor: [255, 186, 55, alpha],
+    getColor: [
+      ...(theme.estimated
+        .replace("#", "")
+        .match(/.{2}/g)
+        ?.map((h) => parseInt(h, 16)) ?? [255, 79, 0]),
+      150 + Math.round(pulse * 90),
+    ] as RGBA,
     widthUnits: "pixels",
-    getWidth: 2.2,
-    widthMinPixels: 1.4,
-    widthMaxPixels: 3,
-    jointRounded: true,
-    capRounded: true,
-    getDashArray: [6, 4],
+    getWidth: 1.4,
+    widthMinPixels: 1.1,
+    jointRounded: false,
+    capRounded: false,
+    getDashArray: [5, 3],
     extensions: [dashExtension],
-    updateTriggers: { getColor: alpha },
+    updateTriggers: { getColor: Math.round(pulse * 10) },
   } as never);
 }
 
-/** Pulsing halo around estimated centroids — the "algorithmic, not surveyed" cue. */
-export function estimatePulseLayer(
+export function markerLayer(
   incidents: IncidentFeature[],
-  pulse: number,
   visible: boolean,
-) {
-  return new ScatterplotLayer<IncidentFeature>({
-    id: "estimate-halo",
-    data: incidents,
-    visible,
-    pickable: false,
-    getPosition: (f) => [f.properties.lon, f.properties.lat],
-    getRadius: (f) => 900 + f.properties.areaSqKm * 240,
-    radiusUnits: "meters",
-    // Keep the "algorithmic" ring visible even when the zone is sub-pixel,
-    // so estimates never look like plain surveyed points at regional zoom.
-    radiusMinPixels: 11,
-    radiusMaxPixels: 120,
-    filled: true,
-    stroked: true,
-    getFillColor: [255, 176, 32, 0] as [number, number, number, number],
-    getLineColor: [255, 176, 32, Math.round(38 + pulse * 60)] as [number, number, number, number],
-    lineWidthUnits: "pixels",
-    getLineWidth: 1.2,
-    opacity: 1,
-    updateTriggers: { getLineColor: Math.round(pulse * 20) },
-  });
-}
-
-export function incidentMarkerLayer(
-  incidents: IncidentFeature[],
+  theme: MapTheme,
   kind: "estimated" | "official",
-  visible: boolean,
 ) {
+  const estimated = kind === "estimated";
   return new ScatterplotLayer<IncidentFeature>({
     id: `marker-${kind}`,
     data: incidents.filter((f) => f.properties.kind === kind),
     visible,
     pickable: true,
     radiusUnits: "pixels",
-    getRadius: kind === "official" ? 5 : 6,
-    radiusMinPixels: 4,
-    radiusMaxPixels: 9,
-    getPosition: (f) => [f.properties.lon, f.properties.lat],
-    getFillColor: kind === "official" ? [255, 69, 58, 240] : [255, 176, 32, 240],
+    radiusMinPixels: 2.8,
+    radiusMaxPixels: 6,
+    getRadius: estimated ? 4 : 3.4,
+    // Estimates are rings; official points are filled. This keeps the
+    // provisional marker distinguishable from a thermal speck at any zoom.
+    filled: !estimated,
     stroked: true,
-    getLineColor: kind === "official" ? [255, 225, 220, 235] : [255, 245, 214, 235],
+    getLineColor: rgba(estimated ? theme.estimated : theme.markerStroke),
     lineWidthUnits: "pixels",
-    getLineWidth: 1.3,
-    opacity: 0.98,
+    getLineWidth: estimated ? 1.6 : 1.2,
+    getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],
+    getFillColor: rgba(theme.official),
   });
 }
 
-export function selectedOutlineLayer(incident: IncidentFeature | null) {
+export function officialPickLayer(incidents: IncidentFeature[], visible: boolean) {
+  return new PolygonLayer<IncidentFeature>({
+    id: "official-pick",
+    data: visible ? incidents : [],
+    pickable: true,
+    getPolygon: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
+    filled: true,
+    getFillColor: [0, 0, 0, 1],
+    stroked: false,
+  });
+}
+
+export function selectedOutlineLayer(incident: IncidentFeature | null, theme: MapTheme) {
   return new PathLayer<IncidentFeature>({
     id: "selected-outline",
     data: incident ? [incident] : [],
-    getPath: (f) => f.geometry.coordinates[0] ?? [],
+    getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
     widthUnits: "pixels",
-    getWidth: 2.4,
-    getColor: [255, 255, 255, 225],
-    jointRounded: true,
-    capRounded: true,
+    getWidth: 1.6,
+    widthMinPixels: 1.4,
+    getColor: rgba(theme.labelText),
+    jointRounded: false,
+    capRounded: false,
     pickable: false,
   });
 }
@@ -233,20 +276,20 @@ export function selectedOutlineLayer(incident: IncidentFeature | null) {
 
 export function incidentLabelLayer(
   incidents: IncidentFeature[],
-  opts: { selectedId: string | null; zoom: number; visible: boolean },
+  opts: { selectedId: string | null; zoom: number; visible: boolean; theme: MapTheme },
 ) {
-  const { selectedId, zoom, visible } = opts;
+  const { selectedId, zoom, visible, theme } = opts;
+
   const ranked = [...incidents].sort((a, b) => {
     if (a.id === selectedId) return -1;
     if (b.id === selectedId) return 1;
-    const kindDelta = (b.properties.kind === "official" ? 1 : 0) - (a.properties.kind === "official" ? 1 : 0);
+    const kindDelta =
+      (b.properties.kind === "official" ? 1 : 0) - (a.properties.kind === "official" ? 1 : 0);
     return kindDelta !== 0 ? kindDelta : b.properties.confidence - a.properties.confidence;
   });
 
-  // Greedy collision avoidance in geographic space: labels are ~95 px wide,
-  // so reject any candidate closer than that at the current zoom.
   const degPerPx = 360 / (512 * 2 ** zoom);
-  const sepDeg = degPerPx * 105;
+  const sepDeg = degPerPx * 118;
   const kept: IncidentFeature[] = [];
   for (const f of ranked) {
     if (f.id !== selectedId) {
@@ -255,53 +298,43 @@ export function incidentLabelLayer(
         const q = k.properties;
         const dLon = Math.abs(q.lon - p.lon) * Math.cos((p.lat * Math.PI) / 180);
         const dLat = Math.abs(q.lat - p.lat);
-        return dLon < sepDeg && dLat < sepDeg * 0.55;
+        return dLon < sepDeg && dLat < sepDeg * 0.5;
       });
       if (collides) continue;
-      if (kept.length >= (zoom >= 6.2 ? 16 : 9)) continue;
+      if (kept.length >= (zoom >= 6.2 ? 14 : 8)) continue;
     }
     kept.push(f);
   }
-  const data = kept;
 
   return new TextLayer<IncidentFeature>({
     id: "incident-labels",
-    data,
+    data: kept,
     visible,
     pickable: false,
-    getPosition: (f) => [f.properties.lon, f.properties.lat],
-    getText: (f) => {
-      const p = f.properties;
-      return p.kind === "official" ? p.name : `${p.name}`;
+    getPosition: (f: IncidentFeature) => {
+      const ring = f.geometry.coordinates[0] ?? [];
+      let maxLat = f.properties.lat;
+      for (const [, lat] of ring) if (lat > maxLat) maxLat = lat;
+      return [f.properties.lon, maxLat];
     },
-    getColor: (f) => (f.properties.kind === "official" ? [255, 220, 215, 240] : [255, 226, 172, 235]),
-    getSize: (f) => (f.id === selectedId ? 12.5 : 10.5),
+    getText: (f: IncidentFeature) => f.properties.name,
+    getColor: rgba(theme.labelText),
+    getSize: (f) => (f.id === selectedId ? 12 : 10.5),
     sizeUnits: "pixels",
-    getPixelOffset: (f) => {
-      // Lift the label just above the polygon rather than its centroid.
-      const p = f.properties;
-      const mPerPx = (156543 * Math.max(0.2, Math.cos((p.lat * Math.PI) / 180))) / 2 ** zoom;
-      const radiusPx = ((Math.sqrt(Math.max(0.02, p.areaSqKm) / Math.PI) * 1000) / Math.max(0.5, mPerPx)) * 0.9;
-      return [0, -(17 + Math.min(90, radiusPx))];
-    },
+    getPixelOffset: (f) => [0, f.id === selectedId ? -16 : -12],
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
     fontWeight: 600,
     characterSet: "auto",
-    background: true,
-    getBackgroundColor: (f) =>
-      f.properties.kind === "official" ? [42, 12, 10, 225] : [34, 24, 8, 222],
-    getBorderColor: (f) =>
-      f.properties.kind === "official" ? [255, 69, 58, 150] : [255, 176, 32, 150],
-    getBorderWidth: 1,
-    backgroundPadding: [7, 3, 7, 3],
+    background: false,
     billboard: true,
     fontSettings: { sdf: true, buffer: 8, radius: 5 },
-    outlineWidth: 0,
+    outlineWidth: 2.2,
+    outlineColor: rgba(theme.labelOutline, 230),
   });
 }
 
 /* ------------------------------------------------------------------ */
-/* H3 density                                                          */
+/* H3                                                                  */
 /* ------------------------------------------------------------------ */
 
 export interface HexDatum {
@@ -314,26 +347,22 @@ export function buildHexData(incidents: IncidentFeature[]): HexDatum[] {
   const map = new Map<string, HexDatum>();
   for (const f of incidents) {
     const p = f.properties;
-    // Official features do not carry H3 cells (they come from surveyed
-    // geometry), so synthesize the cell + 1-ring from the centroid.
     const cells =
-      p.cells && p.cells.length > 0
-        ? p.cells
-        : gridDisk(latLngToCell(p.lat, p.lon, 8), 1);
+      p.cells && p.cells.length > 0 ? p.cells : gridDisk(latLngToCell(p.lat, p.lon, 8), 1);
     for (const hex of cells) {
       const existing = map.get(hex);
       if (!existing) {
-        map.set(hex, { hex, confidence: f.properties.confidence, kind: f.properties.kind });
+        map.set(hex, { hex, confidence: p.confidence, kind: p.kind });
       } else {
-        existing.confidence = Math.max(existing.confidence, f.properties.confidence);
-        if (f.properties.kind === "official") existing.kind = "official";
+        existing.confidence = Math.max(existing.confidence, p.confidence);
+        if (p.kind === "official") existing.kind = "official";
       }
     }
   }
   return [...map.values()];
 }
 
-export function h3Layer(hexes: HexDatum[], visible: boolean) {
+export function h3Layer(hexes: HexDatum[], visible: boolean, theme: MapTheme) {
   return new H3HexagonLayer<HexDatum>({
     id: "h3-density",
     data: hexes,
@@ -344,12 +373,11 @@ export function h3Layer(hexes: HexDatum[], visible: boolean) {
     stroked: true,
     getHexagon: (d) => d.hex,
     getFillColor: (d) =>
-      d.kind === "official"
-        ? [255, 69, 58, 40]
-        : [255, 176, 32, Math.round(26 + (d.confidence / 100) * 86)],
-    getLineColor: (d) => (d.kind === "official" ? [255, 110, 100, 150] : [255, 196, 92, 165]),
+      rgba(d.kind === "official" ? theme.officialFill : theme.estimatedFill),
+    getLineColor: (d) =>
+      rgba(d.kind === "official" ? theme.official : theme.estimated),
     lineWidthUnits: "pixels",
-    getLineWidth: 1.1,
-    opacity: 0.9,
+    getLineWidth: 0.7,
+    opacity: 0.85,
   });
 }

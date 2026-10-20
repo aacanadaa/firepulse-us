@@ -3,7 +3,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "FirePulse US — Real-Time Wildfire & Early Detection Tracker",
+  title: "FirePulse US — National fire picture",
   description:
     "Sub-5-minute wildfire early detection: satellite thermal anomalies, CAD dispatch, camera vectors and crowdsourced reports fused into live Estimated Active Fire Zones alongside official NIFC perimeters.",
   applicationName: "FirePulse US",
@@ -11,7 +11,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#05070a",
+  themeColor: "#f7f7f5",
+  colorScheme: "light",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

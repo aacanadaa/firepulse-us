@@ -64,7 +64,7 @@ export const config = {
 
   ws: {
     /** Max hotspots in a single initial snapshot (bbox-bounded). */
-    snapshotHotspotBudget: num("SNAPSHOT_HOTSPOT_BUDGET", 8000),
+    snapshotHotspotBudget: num("SNAPSHOT_HOTSPOT_BUDGET", 10000),
     snapshotIncidentBudget: num("SNAPSHOT_INCIDENT_BUDGET", 800),
     /** Heartbeat / stats cadence. */
     statsMs: 1000,
