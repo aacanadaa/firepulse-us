@@ -1,0 +1,257 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="stitle sdesc">
+  <title id="stitle">FirePulse US — PostGIS schema</title>
+  <desc id="sdesc">Entity relationship diagram of raw signals, fused incidents, evidence, official perimeter revisions, merge ledger and audit tables.</desc>
+  <defs>
+    <linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070b10"/><stop offset="1" stop-color="#05070a"/>
+    </linearGradient>
+    <filter id="sshadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <marker id="sarrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5d6b7d"/>
+    </marker>
+    <marker id="sarrowWarm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ffb020"/>
+    </marker>
+    <style>
+      .t { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+      .h { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 700; }
+      .entity { fill: #0b1219; stroke: #26323f; }
+      .head { fill: #101b25; }
+      .fname { font-size: 11px; fill: #d7e0ec; }
+      .ftype { font-size: 10px; fill: #6d7684; }
+      .fnote { font-size: 9.5px; fill: #5c6775; }
+      .divider { stroke: #1e2a36; }
+      .kicker { font-size: 9.5px; fill: #77828f; letter-spacing: 0.15em; }
+      .rel { font-size: 9.5px; fill: #8b97a7; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1080" fill="url(#sbg)"/>
+  <rect x="0" y="0" width="1600" height="3" fill="#ff8a3d" opacity="0.7"/>
+
+  <g>
+    <rect x="40" y="34" width="26" height="26" rx="8" fill="#ff8a3d"/>
+    <text x="78" y="48" class="h" font-size="19" fill="#f2f6fb">FIREPULSE <tspan fill="#ffb020">US</tspan> <tspan font-weight="400" font-size="14" fill="#8b97a7">— POSTGIS SCHEMA</tspan></text>
+    <text x="78" y="66" class="t" font-size="10" fill="#5f6b7a">EPSG:4326 for transport · generated EPSG:5070 (metres) for every distance, area and cluster</text>
+    <text x="1560" y="48" text-anchor="end" class="t" font-size="10" fill="#6d7684">db/migrations/001_init.sql</text>
+    <text x="1560" y="66" text-anchor="end" class="t" font-size="10" fill="#4f5a69">PostgreSQL 15+ · PostGIS 3.3+</text>
+  </g>
+
+  <!-- ===================== RAW SIGNAL ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="40" y="110" width="372" height="344" rx="11"/>
+    <path d="M40 121 a11 11 0 0 1 11 -11 h350 a11 11 0 0 1 11 11 v29 h-372 z" class="head"/>
+  </g>
+  <text x="58" y="138" class="t" font-size="12" fill="#9fd4ec" font-weight="700">raw_signal</text>
+  <text x="392" y="138" text-anchor="end" class="t" font-size="9" fill="#5f6b7a">TIER 1–4</text>
+  <text x="58" y="154" class="fnote">append-only evidence · 24 h hot</text>
+  <line x1="40" y1="166" x2="412" y2="166" class="divider"/>
+
+  <g class="t">
+    <text x="58" y="186" class="fname">id</text><text x="180" y="186" class="ftype">uuid PK</text>
+    <text x="58" y="206" class="fname">source</text><text x="180" y="206" class="ftype">signal_source</text>
+    <text x="58" y="226" class="fname">kind · tier</text><text x="180" y="226" class="ftype">text · smallint</text>
+    <text x="58" y="246" class="fname">geom</text><text x="180" y="246" class="ftype">Point 4326</text>
+    <text x="58" y="266" class="fname">geom_5070</text><text x="180" y="266" class="ftype">generated</text><text x="300" y="266" class="fnote">metres</text>
+    <text x="58" y="286" class="fname">h3</text><text x="180" y="286" class="ftype">text</text><text x="300" y="286" class="fnote">res 8</text>
+    <text x="58" y="306" class="fname">observed_at</text><text x="180" y="306" class="ftype">timestamptz</text>
+    <text x="58" y="326" class="fname">received_at</text><text x="180" y="326" class="ftype">timestamptz</text>
+    <text x="58" y="346" class="fname">frp · confidence</text><text x="180" y="346" class="ftype">real · real</text>
+    <text x="58" y="366" class="fname">bearing · dist_m</text><text x="180" y="366" class="ftype">smallint · int</text>
+    <text x="58" y="386" class="fname">dedupe_key</text><text x="180" y="386" class="ftype">text</text><text x="300" y="386" class="fnote">unique/source</text>
+    <text x="58" y="406" class="fname">payload</text><text x="180" y="406" class="ftype">jsonb</text>
+    <text x="58" y="426" class="fname">cluster_id · expiry</text><text x="180" y="426" class="ftype">uuid · tstz</text>
+  </g>
+  <line x1="40" y1="438" x2="412" y2="438" class="divider"/>
+  <text x="58" y="452" class="fnote">GiST 5070 · BRIN observed_at · partial idx cluster_id is null</text>
+
+  <!-- ===================== FIRE INCIDENT ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="580" y="88" width="432" height="390" rx="11"/>
+    <path d="M580 99 a11 11 0 0 1 11 -11 h410 a11 11 0 0 1 11 11 v29 h-432 z" class="head"/>
+  </g>
+  <text x="598" y="116" class="t" font-size="12" fill="#ffc45c" font-weight="700">fire_incident</text>
+  <text x="994" y="116" text-anchor="end" class="t" font-size="9" fill="#8a6a35">ESTIMATED + OFFICIAL</text>
+  <text x="598" y="132" class="fnote">one relation for both kinds — feed and diff never UNION</text>
+  <line x1="580" y1="144" x2="1012" y2="144" class="divider"/>
+
+  <g class="t">
+    <text x="598" y="164" class="fname">id</text><text x="720" y="164" class="ftype">uuid PK</text>
+    <text x="598" y="184" class="fname">kind</text><text x="720" y="184" class="ftype">estimated | official</text>
+    <text x="598" y="204" class="fname">status</text><text x="720" y="204" class="ftype">detected · growing · merged…</text>
+    <text x="598" y="224" class="fname">name</text><text x="720" y="224" class="ftype">text</text><text x="880" y="224" class="fnote">trgm idx</text>
+    <text x="598" y="244" class="fname">geom</text><text x="720" y="244" class="ftype">Polygon 4326</text>
+    <text x="598" y="264" class="fname">centroid</text><text x="720" y="264" class="ftype">Point 4326</text>
+    <text x="598" y="284" class="fname">confidence</text><text x="720" y="284" class="ftype">numeric(5,2)</text><text x="880" y="284" class="fnote">1–99 | 100</text>
+    <text x="598" y="304" class="fname">confidence_breakdown</text><text x="790" y="304" class="ftype">jsonb</text>
+    <text x="598" y="324" class="fname">sources</text><text x="720" y="324" class="ftype">jsonb</text><text x="880" y="324" class="fnote">[{source,count}]</text>
+    <text x="598" y="344" class="fname">h3_cells</text><text x="720" y="344" class="ftype">text[]</text>
+    <text x="598" y="364" class="fname">area_acres · frp</text><text x="720" y="364" class="ftype">numeric · real</text>
+    <text x="598" y="384" class="fname">growth_score</text><text x="720" y="384" class="ftype">real</text><text x="880" y="384" class="fnote">feed sort</text>
+    <text x="598" y="404" class="fname">first_detected_at</text><text x="720" y="404" class="ftype">timestamptz</text>
+    <text x="598" y="424" class="fname">official_since</text><text x="720" y="424" class="ftype">timestamptz</text>
+    <text x="598" y="444" class="fname">merged_into</text><text x="720" y="444" class="ftype">uuid FK → self</text>
+    <text x="598" y="464" class="fname">active_from · active_to</text><text x="780" y="464" class="ftype">timestamptz</text>
+  </g>
+  <line x1="580" y1="476" x2="1012" y2="476" class="divider"/>
+  <text x="598" y="490" class="fnote">GiST geom_5070 · GiST centroid · BRIN first_detected_at · GIN h3_cells</text>
+
+  <!-- ===================== OFFICIAL PERIMETER ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="1160" y="88" width="400" height="344" rx="11"/>
+    <path d="M1160 99 a11 11 0 0 1 11 -11 h378 a11 11 0 0 1 11 11 v29 h-400 z" class="head"/>
+  </g>
+  <text x="1178" y="116" class="t" font-size="12" fill="#ff8a80" font-weight="700">official_perimeter</text>
+  <text x="1542" y="116" text-anchor="end" class="t" font-size="9" fill="#9b5b57">SCD-2</text>
+  <text x="1178" y="132" class="fnote">every surveyed revision, not just the latest</text>
+  <line x1="1160" y1="144" x2="1560" y2="144" class="divider"/>
+  <g class="t">
+    <text x="1178" y="166" class="fname">id</text><text x="1300" y="166" class="ftype">bigserial PK</text>
+    <text x="1178" y="186" class="fname">incident_id</text><text x="1300" y="186" class="ftype">uuid FK</text>
+    <text x="1178" y="206" class="fname">geom</text><text x="1300" y="206" class="ftype">MultiPolygon 4326</text>
+    <text x="1178" y="226" class="fname">geom_5070</text><text x="1300" y="226" class="ftype">generated</text>
+    <text x="1178" y="246" class="fname">area_acres</text><text x="1300" y="246" class="ftype">numeric</text>
+    <text x="1178" y="266" class="fname">agency · source</text><text x="1300" y="266" class="ftype">text</text>
+    <text x="1178" y="286" class="fname">revision</text><text x="1300" y="286" class="ftype">integer</text>
+    <text x="1178" y="306" class="fname">published_at</text><text x="1300" y="306" class="ftype">timestamptz</text>
+    <text x="1178" y="326" class="fname">valid_from</text><text x="1300" y="326" class="ftype">timestamptz</text>
+    <text x="1178" y="346" class="fname">valid_to</text><text x="1300" y="346" class="ftype">timestamptz</text>
+    <text x="1178" y="366" class="fname">raw</text><text x="1300" y="366" class="ftype">jsonb</text>
+  </g>
+  <line x1="1160" y1="390" x2="1560" y2="390" class="divider"/>
+  <text x="1178" y="406" class="fnote">UNIQUE(incident_id, revision)</text>
+  <text x="1178" y="420" class="fnote">only one open revision per incident</text>
+
+  <!-- ===================== INCIDENT EVIDENCE ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="40" y="512" width="372" height="212" rx="11"/>
+    <path d="M40 523 a11 11 0 0 1 11 -11 h350 a11 11 0 0 1 11 11 v29 h-372 z" class="head"/>
+  </g>
+  <text x="58" y="540" class="t" font-size="12" fill="#c4b5fd" font-weight="700">incident_evidence</text>
+  <text x="392" y="540" text-anchor="end" class="t" font-size="9" fill="#6f63a8">WHY WE BELIEVE IT</text>
+  <text x="58" y="556" class="fnote">per-source contribution after decay</text>
+  <line x1="40" y1="568" x2="412" y2="568" class="divider"/>
+  <g class="t">
+    <text x="58" y="590" class="fname">incident_id</text><text x="180" y="590" class="ftype">uuid PK, FK</text>
+    <text x="58" y="610" class="fname">source</text><text x="180" y="610" class="ftype">signal_source PK</text>
+    <text x="58" y="630" class="fname">modality</text><text x="180" y="630" class="ftype">text</text>
+    <text x="58" y="650" class="fname">signal_count</text><text x="180" y="650" class="ftype">integer</text>
+    <text x="58" y="670" class="fname">contribution</text><text x="180" y="670" class="ftype">numeric(6,4)</text>
+    <text x="58" y="690" class="fname">effective</text><text x="180" y="690" class="ftype">numeric(6,4)</text>
+    <text x="58" y="710" class="fname">first_seen · last_seen</text><text x="230" y="710" class="ftype">timestamptz</text>
+  </g>
+
+  <!-- ===================== INCIDENT SIGNAL ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="40" y="770" width="372" height="150" rx="11"/>
+    <path d="M40 781 a11 11 0 0 1 11 -11 h350 a11 11 0 0 1 11 11 v29 h-372 z" class="head"/>
+  </g>
+  <text x="58" y="798" class="t" font-size="12" fill="#9fd4ec" font-weight="700">incident_signal</text>
+  <text x="392" y="798" text-anchor="end" class="t" font-size="9" fill="#4f6b7a">MEMBERSHIP</text>
+  <line x1="40" y1="816" x2="412" y2="816" class="divider"/>
+  <g class="t">
+    <text x="58" y="838" class="fname">incident_id</text><text x="180" y="838" class="ftype">uuid PK, FK</text>
+    <text x="58" y="858" class="fname">signal_id</text><text x="180" y="858" class="ftype">uuid PK</text>
+    <text x="58" y="878" class="fname">added_at</text><text x="180" y="878" class="ftype">timestamptz</text>
+  </g>
+  <text x="58" y="902" class="fnote">retention-bounded · enables evidence replay</text>
+
+  <!-- ===================== ESTIMATE MERGE ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="1160" y="500" width="400" height="232" rx="11"/>
+    <path d="M1160 511 a11 11 0 0 1 11 -11 h378 a11 11 0 0 1 11 11 v29 h-400 z" class="head"/>
+  </g>
+  <text x="1178" y="528" class="t" font-size="12" fill="#8af0b4" font-weight="700">estimate_merge</text>
+  <text x="1542" y="528" text-anchor="end" class="t" font-size="9" fill="#4f8a66">THE PRODUCT KPI</text>
+  <text x="1178" y="544" class="fnote">early-estimate → official ground truth</text>
+  <line x1="1160" y1="556" x2="1560" y2="556" class="divider"/>
+  <g class="t">
+    <text x="1178" y="578" class="fname">estimate_id</text><text x="1300" y="578" class="ftype">uuid FK</text>
+    <text x="1178" y="598" class="fname">official_id</text><text x="1300" y="598" class="ftype">uuid FK</text>
+    <text x="1178" y="618" class="fname">lead_time_minutes</text><text x="1320" y="618" class="ftype">integer</text>
+    <text x="1178" y="638" class="fname">peak_confidence</text><text x="1300" y="638" class="ftype">numeric</text>
+    <text x="1178" y="658" class="fname">distance_km</text><text x="1300" y="658" class="ftype">real</text>
+    <text x="1178" y="678" class="fname">match_method</text><text x="1300" y="678" class="ftype">containment | proximity | name</text>
+    <text x="1178" y="698" class="fname">merged_at</text><text x="1300" y="698" class="ftype">timestamptz</text>
+  </g>
+  <line x1="1160" y1="710" x2="1560" y2="710" class="divider"/>
+  <text x="1178" y="724" class="fnote">UNIQUE(estimate_id, official_id) · idempotent merge</text>
+
+  <!-- ===================== FUSION RUN ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="580" y="510" width="432" height="214" rx="11"/>
+    <path d="M580 521 a11 11 0 0 1 11 -11 h410 a11 11 0 0 1 11 11 v29 h-432 z" class="head"/>
+  </g>
+  <text x="598" y="538" class="t" font-size="12" fill="#c9d4e2" font-weight="700">fusion_run</text>
+  <text x="994" y="538" text-anchor="end" class="t" font-size="9" fill="#5f6b7a">AUDIT</text>
+  <line x1="580" y1="556" x2="1012" y2="556" class="divider"/>
+  <g class="t">
+    <text x="598" y="578" class="fname">started_at · duration_ms</text><text x="790" y="578" class="ftype">tstz · int</text>
+    <text x="598" y="598" class="fname">signals_considered</text><text x="790" y="598" class="ftype">integer</text>
+    <text x="598" y="618" class="fname">clusters_formed</text><text x="790" y="618" class="ftype">integer</text>
+    <text x="598" y="638" class="fname">incidents_created</text><text x="790" y="638" class="ftype">integer</text>
+    <text x="598" y="658" class="fname">incidents_updated</text><text x="790" y="658" class="ftype">integer</text>
+    <text x="598" y="678" class="fname">incidents_merged</text><text x="790" y="678" class="ftype">integer</text>
+    <text x="598" y="698" class="fname">radius_m · window_minutes</text><text x="810" y="698" class="ftype">integer</text>
+  </g>
+  <text x="598" y="716" class="fnote">one row per 4 s pass — latency regression detection</text>
+
+  <!-- ===================== WIND FIELD ===================== -->
+  <g filter="url(#sshadow)">
+    <rect class="entity" x="1160" y="770" width="400" height="150" rx="11"/>
+    <path d="M1160 781 a11 11 0 0 1 11 -11 h378 a11 11 0 0 1 11 11 v29 h-400 z" class="head"/>
+  </g>
+  <text x="1178" y="798" class="t" font-size="12" fill="#9fd4ec" font-weight="700">wind_field</text>
+  <text x="1542" y="798" text-anchor="end" class="t" font-size="9" fill="#4f6b7a">CONTEXT</text>
+  <line x1="1160" y1="816" x2="1560" y2="816" class="divider"/>
+  <g class="t">
+    <text x="1178" y="838" class="fname">model · valid_at</text><text x="1320" y="838" class="ftype">text · tstz</text>
+    <text x="1178" y="858" class="fname">cols · rows</text><text x="1320" y="858" class="ftype">smallint</text>
+    <text x="1178" y="878" class="fname">u[] · v[] · speed_max</text><text x="1340" y="878" class="ftype">real</text>
+    <text x="1178" y="898" class="fname">bbox</text><text x="1320" y="898" class="ftype">Polygon 4326</text>
+  </g>
+
+  <!-- ===================== RELATIONSHIPS ===================== -->
+  <g>
+    <path d="M412 220 C470 220, 500 220, 580 220" fill="none" stroke="#5d6b7d" stroke-width="1.5" marker-end="url(#sarrow)"/>
+    <text x="438" y="212" class="rel">clustered into</text>
+
+    <path d="M610 476 C520 496, 420 508, 330 512" fill="none" stroke="#8b7ac8" stroke-width="1.5" marker-end="url(#sarrow)"/>
+    <text x="392" y="500" class="rel">1 : N evidence</text>
+
+    <path d="M598 478 C520 600, 380 700, 300 770" fill="none" stroke="#5d6b7d" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#sarrow)"/>
+    <text x="300" y="752" class="rel" fill="#5f6b7a">membership</text>
+
+    <path d="M1012 200 C1060 200, 1100 200, 1160 200" fill="none" stroke="#ff6b61" stroke-width="1.6" marker-end="url(#sarrow)"/>
+    <text x="1042" y="192" class="rel">1 : N revisions</text>
+
+    <path d="M1012 330 C1090 330, 1100 540, 1160 560" fill="none" stroke="#5ecf8f" stroke-width="1.6" marker-end="url(#sarrow)"/>
+    <text x="1046" y="430" class="rel" fill="#6f9c83">1 : 1 precursor</text>
+
+    <path d="M900 88 C900 62, 1000 62, 1000 88" fill="none" stroke="#5d6b7d" stroke-width="1.4" marker-end="url(#sarrow)"/>
+    <text x="906" y="56" class="t" font-size="9" fill="#6d7684">merged_into (self)</text>
+
+  </g>
+
+  <!-- legend -->
+  <line x1="40" y1="960" x2="1560" y2="960" stroke="#18222c"/>
+  <g>
+    <text x="40" y="990" class="kicker">PRINCIPLES</text>
+    <text x="40" y="1010" class="t" font-size="10" fill="#a7b3c2">estimated + official share one table</text>
+    <text x="40" y="1026" class="fnote">the feed and diff engine never need a UNION</text>
+
+    <text x="430" y="990" class="kicker">METRIC SPACE</text>
+    <text x="430" y="1010" class="t" font-size="10" fill="#a7b3c2">generated EPSG:5070 columns</text>
+    <text x="430" y="1026" class="fnote">buffers, areas and DBSCAN run in metres</text>
+
+    <text x="830" y="990" class="kicker">OBSERVABILITY</text>
+    <text x="830" y="1010" class="t" font-size="10" fill="#a7b3c2">lead-time ledger + fusion audit</text>
+    <text x="830" y="1026" class="fnote">the warning delivered is queryable, not marketing</text>
+
+    <text x="1220" y="990" class="kicker">RETENTION</text>
+    <text x="1220" y="1010" class="t" font-size="10" fill="#a7b3c2">24 h hot · hourly H3 rollups</text>
+    <text x="1220" y="1026" class="fnote">official revisions and merges are never purged</text>
+  </g>
+</svg>

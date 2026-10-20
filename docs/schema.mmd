@@ -1,0 +1,104 @@
+erDiagram
+  RAW_SIGNAL {
+    uuid id PK
+    text source
+    text kind
+    smallint tier
+    geometry geom "Point 4326"
+    geometry geom_5070 "generated, metres"
+    text h3 "res 8"
+    timestamptz observed_at
+    timestamptz received_at
+    real frp
+    real provider_confidence
+    smallint bearing
+    integer distance_m
+    text dedupe_key
+    jsonb payload
+    uuid cluster_id
+    timestamptz expires_at
+  }
+
+  FIRE_INCIDENT {
+    uuid id PK
+    text kind "estimated | official"
+    text status
+    text name
+    geometry geom "Polygon 4326"
+    geometry centroid
+    numeric confidence
+    jsonb confidence_breakdown
+    jsonb sources
+    text_array h3_cells
+    numeric area_acres
+    real frp
+    real growth_score
+    timestamptz first_detected_at
+    timestamptz official_since
+    uuid merged_into FK
+    timestamptz active_from
+    timestamptz active_to
+  }
+
+  INCIDENT_EVIDENCE {
+    uuid incident_id PK
+    text source PK
+    text modality
+    integer signal_count
+    numeric contribution
+    timestamptz first_seen
+    timestamptz last_seen
+  }
+
+  INCIDENT_SIGNAL {
+    uuid incident_id PK
+    uuid signal_id PK
+  }
+
+  OFFICIAL_PERIMETER {
+    bigint id PK
+    uuid incident_id FK
+    geometry geom "MultiPolygon 4326"
+    numeric area_acres
+    text agency
+    integer revision
+    timestamptz published_at
+    timestamptz valid_from
+    timestamptz valid_to
+  }
+
+  ESTIMATE_MERGE {
+    bigint id PK
+    uuid estimate_id FK
+    uuid official_id FK
+    integer lead_time_minutes
+    numeric peak_confidence
+    real distance_km
+    text match_method
+  }
+
+  FUSION_RUN {
+    bigint id PK
+    timestamptz started_at
+    integer duration_ms
+    integer signals_considered
+    integer clusters_formed
+    integer incidents_created
+    integer incidents_merged
+  }
+
+  WIND_FIELD {
+    bigint id PK
+    text model
+    timestamptz valid_at
+    smallint cols
+    smallint rows
+    real_array u
+    real_array v
+  }
+
+  FIRE_INCIDENT ||--o{ INCIDENT_EVIDENCE : "explained by"
+  FIRE_INCIDENT ||--o{ INCIDENT_SIGNAL : "supported by"
+  FIRE_INCIDENT ||--o{ OFFICIAL_PERIMETER : "revisioned as"
+  FIRE_INCIDENT ||--o| ESTIMATE_MERGE : "precursor of"
+  FIRE_INCIDENT }o--o| FIRE_INCIDENT : "merged into"

@@ -1,0 +1,314 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860" role="img" aria-labelledby="title desc">
+  <title id="title">FirePulse US system architecture</title>
+  <desc id="desc">Four tiers of wildfire signals flow through an ingestion bus into PostGIS and Redis, through a fusion engine that clusters and scores them, into a WebSocket delta hub and a MapLibre plus deck.gl client.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#070b10"/>
+      <stop offset="1" stop-color="#05070a"/>
+    </linearGradient>
+    <linearGradient id="fusion" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2a1420"/>
+      <stop offset="1" stop-color="#140d13"/>
+    </linearGradient>
+    <linearGradient id="client" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1a22"/>
+      <stop offset="1" stop-color="#0a1016"/>
+    </linearGradient>
+    <radialGradient id="ember" cx="0.3" cy="0.25" r="0.9">
+      <stop offset="0" stop-color="#ffe9b0"/>
+      <stop offset="0.4" stop-color="#ffb020"/>
+      <stop offset="0.75" stop-color="#ff5a1f"/>
+      <stop offset="1" stop-color="#7a1d0c"/>
+    </radialGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5d6b7d"/>
+    </marker>
+    <marker id="arrowWarm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ff9a3d"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ff5a4f"/>
+    </marker>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.55"/>
+    </filter>
+    <style>
+      .h { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; font-weight: 700; }
+      .m { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+      .label { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; letter-spacing: 0.16em; }
+      .small { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 10.5px; }
+      .body { font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; font-size: 12px; }
+    </style>
+  </defs>
+
+  <rect width="1400" height="860" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1400" height="3" fill="#ff8a3d" opacity="0.7"/>
+
+  <!-- header -->
+  <g>
+    <rect x="40" y="34" width="30" height="30" rx="9" fill="url(#ember)"/>
+    <text x="84" y="50" class="h" font-size="20" fill="#f2f6fb" letter-spacing="0.5">FIREPULSE <tspan fill="#ffb020">US</tspan></text>
+    <text x="84" y="68" class="label" fill="#77828f">REAL-TIME WILDFIRE FUSION ARCHITECTURE</text>
+    <text x="1360" y="48" text-anchor="end" class="small" fill="#6d7684">postgis · redis · maplibre · deck.gl · next.js</text>
+    <text x="1360" y="66" text-anchor="end" class="small" fill="#4f5a69">v1.0 · 4 s fusion tick</text>
+  </g>
+
+  <!-- ================= SOURCES ================= -->
+  <g filter="url(#shadow)">
+    <rect x="40" y="104" width="254" height="600" rx="16" fill="#0a0f15" stroke="#1c2733"/>
+  </g>
+  <text x="58" y="130" class="label" fill="#8c98a8">SIGNAL TIERS</text>
+  <text x="58" y="146" class="small" fill="#4e5968">heterogeneous, uneven trust</text>
+
+  <g>
+    <rect x="56" y="162" width="222" height="118" rx="11" fill="#161009" stroke="#4a3312"/>
+    <circle cx="70" cy="180" r="4" fill="#ffb020"/>
+    <text x="82" y="184" class="label" font-size="10" fill="#ffc45c">TIER 1 · &lt; 5 MIN</text>
+    <text x="70" y="206" class="body" fill="#e6edf6">CAD / PulsePoint dispatch</text>
+    <text x="70" y="226" class="body" fill="#e6edf6">Scanner AI transcription</text>
+    <text x="70" y="246" class="body" fill="#e6edf6">PTZ camera vectors</text>
+    <text x="70" y="266" class="body" fill="#c2cbd8">Crowd photo + compass bearing</text>
+  </g>
+
+  <g>
+    <rect x="56" y="292" width="222" height="104" rx="11" fill="#150d08" stroke="#51321a"/>
+    <circle cx="70" cy="310" r="4" fill="#ff8a3d"/>
+    <text x="82" y="314" class="label" font-size="10" fill="#ffa968">TIER 2 · SATELLITE</text>
+    <text x="70" y="336" class="body" fill="#e6edf6">GOES-16 / GOES-18 ABI · 5 min</text>
+    <text x="70" y="356" class="body" fill="#e6edf6">FIRMS VIIRS 375 m</text>
+    <text x="70" y="376" class="body" fill="#c2cbd8">FIRMS MODIS 1 km</text>
+  </g>
+
+  <g>
+    <rect x="56" y="408" width="222" height="104" rx="11" fill="#08141b" stroke="#1b3b4c"/>
+    <circle cx="70" cy="426" r="4" fill="#38bdf8"/>
+    <text x="82" y="430" class="label" font-size="10" fill="#7dd3fc">TIER 3 · CONTEXT</text>
+    <text x="70" y="452" class="body" fill="#e6edf6">PurpleAir / AirNow PM2.5</text>
+    <text x="70" y="472" class="body" fill="#e6edf6">RAWS wind, RH, fuel moisture</text>
+    <text x="70" y="492" class="body" fill="#c2cbd8">NWS Red Flag polygons</text>
+  </g>
+
+  <g>
+    <rect x="56" y="524" width="222" height="104" rx="11" fill="#170a0a" stroke="#55201d"/>
+    <circle cx="70" cy="542" r="4" fill="#ff4d4d"/>
+    <text x="82" y="546" class="label" font-size="10" fill="#ff8a80">TIER 4 · GROUND TRUTH</text>
+    <text x="70" y="568" class="body" fill="#e6edf6">NIFC WFIGS incidents</text>
+    <text x="70" y="588" class="body" fill="#e6edf6">CAL FIRE / InciWeb perimeters</text>
+    <text x="70" y="608" class="body" fill="#c2cbd8">surveyed · confidence 100</text>
+  </g>
+
+  <text x="56" y="660" class="small" fill="#5f6b7a">Every observation is normalised:</text>
+  <text x="56" y="676" class="small" fill="#8b97a7">observed_at ≠ received_at</text>
+  <text x="56" y="690" class="small" fill="#8b97a7">H3 r8 cell + dedupe key</text>
+
+  <!-- ================= INGESTION ================= -->
+  <g filter="url(#shadow)">
+    <rect x="330" y="238" width="190" height="330" rx="14" fill="#0c1219" stroke="#26323f"/>
+  </g>
+  <text x="348" y="266" class="label" fill="#9fb0c2">INGESTION BUS</text>
+  <line x1="348" y1="276" x2="502" y2="276" stroke="#1e2a36"/>
+  <text x="348" y="298" class="small" fill="#d3dce8">adapter contract</text>
+  <text x="348" y="314" class="small" fill="#77828f">poll(now, since)</text>
+  <text x="348" y="340" class="small" fill="#d3dce8">normalise</text>
+  <text x="348" y="356" class="small" fill="#77828f">lon/lat clamp · tier</text>
+  <text x="348" y="382" class="small" fill="#d3dce8">project bearings</text>
+  <text x="348" y="398" class="small" fill="#77828f">PTZ / crowd → target</text>
+  <text x="348" y="424" class="small" fill="#d3dce8">H3 res 8 + dedupe</text>
+  <text x="348" y="440" class="small" fill="#77828f">unique source, key</text>
+  <text x="348" y="466" class="small" fill="#d3dce8">batch write</text>
+  <text x="348" y="482" class="small" fill="#77828f">jsonb_to_recordset</text>
+  <text x="348" y="508" class="small" fill="#d3dce8">webhooks</text>
+  <text x="348" y="524" class="small" fill="#77828f">CAD · crowd · HMAC</text>
+  <text x="348" y="550" class="small" fill="#5f6b7a">5 s – 15 min cadence</text>
+
+  <!-- arrows sources -> ingestion -->
+  <path d="M296 396 C312 396, 314 396, 330 396" fill="none" stroke="#5d6b7d" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="300" y="386" class="m" font-size="8.5" fill="#5f6b7a">poll</text>
+
+  <!-- ================= POSTGRES ================= -->
+  <g filter="url(#shadow)">
+    <rect x="560" y="128" width="274" height="318" rx="14" fill="#0b1218" stroke="#29404f"/>
+  </g>
+  <text x="580" y="156" class="label" fill="#9fb0c2">POSTGRESQL + POSTGIS</text>
+  <text x="580" y="172" class="small" fill="#4f5a69">system of record · EPSG:4326 + 5070</text>
+  <line x1="580" y1="182" x2="814" y2="182" stroke="#1e2a36"/>
+  <g class="small">
+    <text x="580" y="204" fill="#d3dce8">raw_signal</text>
+    <text x="814" y="204" text-anchor="end" fill="#6d7684">24 h hot</text>
+    <text x="580" y="228" fill="#d3dce8">fire_incident</text>
+    <text x="814" y="228" text-anchor="end" fill="#6d7684">est | official</text>
+    <text x="580" y="252" fill="#d3dce8">incident_evidence</text>
+    <text x="814" y="252" text-anchor="end" fill="#6d7684">per source</text>
+    <text x="580" y="276" fill="#d3dce8">official_perimeter</text>
+    <text x="814" y="276" text-anchor="end" fill="#6d7684">SCD-2</text>
+    <text x="580" y="300" fill="#d3dce8">estimate_merge</text>
+    <text x="814" y="300" text-anchor="end" fill="#6d7684">lead time</text>
+    <text x="580" y="324" fill="#d3dce8">fusion_run · rollup</text>
+    <text x="814" y="324" text-anchor="end" fill="#6d7684">audit · H3</text>
+  </g>
+  <line x1="580" y1="342" x2="814" y2="342" stroke="#1e2a36"/>
+  <g class="small" fill="#6d7684">
+    <text x="580" y="364">GiST geom_5070 · BRIN observed_at</text>
+    <text x="580" y="382">GIN h3_cells · btree growth_score</text>
+    <text x="580" y="400">partial idx unclustered signals</text>
+    <text x="580" y="424" fill="#8b97a7">ST_ClusterDBSCAN · ST_DWithin</text>
+  </g>
+
+  <!-- ================= REDIS ================= -->
+  <g filter="url(#shadow)">
+    <rect x="560" y="486" width="274" height="212" rx="14" fill="#0b1218" stroke="#3f2634"/>
+  </g>
+  <text x="580" y="514" class="label" fill="#d9a8c6">REDIS</text>
+  <text x="580" y="530" class="small" fill="#4f5a69">accelerator, never a dependency</text>
+  <line x1="580" y1="540" x2="814" y2="540" stroke="#1e2a36"/>
+  <g class="small">
+    <text x="580" y="564" fill="#d3dce8">fp:geo:incidents</text>
+    <text x="580" y="582" fill="#6d7684">GEOSEARCH … BYBOX → sub-50 ms</text>
+    <text x="580" y="608" fill="#d3dce8">fp:inc:payload</text>
+    <text x="580" y="626" fill="#6d7684">serialized features, one HMGET</text>
+    <text x="580" y="652" fill="#d3dce8">fp:deltas</text>
+    <text x="580" y="670" fill="#6d7684">Pub/Sub fan-out across API pods</text>
+  </g>
+
+  <!-- ================= FUSION ================= -->
+  <g filter="url(#shadow)">
+    <rect x="870" y="128" width="256" height="570" rx="16" fill="url(#fusion)" stroke="#5b2a3f"/>
+  </g>
+  <text x="890" y="156" class="label" fill="#ff9dc4">FUSION ENGINE</text>
+  <text x="890" y="172" class="small" fill="#a5778c">early-estimate · 4 s tick</text>
+  <line x1="890" y1="182" x2="1106" y2="182" stroke="#3d2230"/>
+
+  <g>
+    <circle cx="896" cy="206" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="210" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">1</text>
+    <text x="912" y="210" class="small" fill="#e6edf6">load 30 min evidence</text>
+    <circle cx="896" cy="232" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="236" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">2</text>
+    <text x="912" y="236" class="small" fill="#e6edf6">DBSCAN 2 km · 5070 m</text>
+    <circle cx="896" cy="258" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="262" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">3</text>
+    <text x="912" y="262" class="small" fill="#e6edf6">attach PM2.5 / RAWS</text>
+    <circle cx="896" cy="284" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="288" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">4</text>
+    <text x="912" y="288" class="small" fill="#e6edf6">noisy-OR confidence</text>
+    <circle cx="896" cy="310" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="314" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">5</text>
+    <text x="912" y="314" class="small" fill="#e6edf6">buffered convex hull</text>
+    <circle cx="896" cy="336" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="340" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">6</text>
+    <text x="912" y="340" class="small" fill="#e6edf6">H3 identity · merge</text>
+    <circle cx="896" cy="362" r="8" fill="#ff4d9d" opacity="0.15"/>
+    <text x="896" y="366" text-anchor="middle" class="m" font-size="9" fill="#ff9dc4">7</text>
+    <text x="912" y="366" class="small" fill="#e6edf6">minimal GeoJSON diff</text>
+  </g>
+
+  <g>
+    <rect x="888" y="388" width="220" height="130" rx="10" fill="#120c11" stroke="#3d2230"/>
+    <text x="902" y="408" class="label" font-size="9" fill="#a5778c">CONFIDENCE</text>
+    <text x="902" y="428" class="m" font-size="11.5" fill="#ffe1ec">score = 100 · fused</text>
+    <text x="902" y="444" class="m" font-size="11.5" fill="#ffe1ec">     · corr · fresh</text>
+    <line x1="902" y1="454" x2="1094" y2="454" stroke="#2a1a24"/>
+    <text x="902" y="472" class="small" fill="#c9a2b4">single crowd report</text>
+    <text x="1090" y="472" text-anchor="end" class="m" font-size="11" fill="#ffb020">20%</text>
+    <text x="902" y="490" class="small" fill="#c9a2b4">CAD dispatch + GOES</text>
+    <text x="1090" y="490" text-anchor="end" class="m" font-size="11" fill="#ffb020">85%</text>
+    <text x="902" y="508" class="small" fill="#c9a2b4">NIFC perimeter</text>
+    <text x="1090" y="508" text-anchor="end" class="m" font-size="11" fill="#ff6b61">100%</text>
+  </g>
+
+  <g>
+    <rect x="888" y="532" width="220" height="150" rx="10" fill="#0f1410" stroke="#2b3a2c"/>
+    <text x="902" y="552" class="label" font-size="9" fill="#9cc2a3">MERGE LEDGER</text>
+    <text x="902" y="572" class="small" fill="#d3dce8">estimate → official</text>
+    <text x="902" y="590" class="small" fill="#77828f">lead =</text>
+    <text x="902" y="605" class="small" fill="#77828f">official_since −</text>
+    <text x="902" y="620" class="small" fill="#77828f">first_detected_at</text>
+    <text x="902" y="646" class="m" font-size="10" fill="#8af0b4">median head start</text>
+    <text x="902" y="668" class="m" font-size="17" fill="#b6f5cc">4 min</text>
+  </g>
+
+  <!-- ingestion -> postgres -->
+  <path d="M520 300 C540 300, 540 290, 560 290" fill="none" stroke="#5d6b7d" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="528" y="282" class="m" font-size="9" fill="#5f6b7a">batch</text>
+
+  <!-- postgres <-> fusion -->
+  <path d="M834 280 C852 280, 852 272, 870 272" fill="none" stroke="#5d6b7d" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <path d="M870 296 C852 296, 852 304, 834 304" fill="none" stroke="#5d6b7d" stroke-width="1.8" marker-end="url(#arrow)"/>
+
+  <!-- postgres <-> redis -->
+  <path d="M697 446 L697 486" fill="none" stroke="#4b4a5e" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#arrow)"/>
+  <text x="705" y="470" class="m" font-size="8.5" fill="#5f6b7a">warm</text>
+
+  <!-- redis <-> fusion -->
+  <path d="M814 556 C844 556, 848 560, 870 560" fill="none" stroke="#7a4a62" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <path d="M870 584 C846 584, 842 580, 814 580" fill="none" stroke="#7a4a62" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- official direct -> fusion -->
+  <path d="M296 600 C470 690, 760 700, 862 660" fill="none" stroke="#ff5a4f" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrowRed)"/>
+  <text x="480" y="704" class="m" font-size="9" fill="#b8706c">official ground truth bypasses clustering</text>
+
+  <!-- ================= REALTIME ================= -->
+  <g filter="url(#shadow)">
+    <rect x="1160" y="128" width="200" height="250" rx="14" fill="#0b1218" stroke="#2a3c4d"/>
+  </g>
+  <text x="1178" y="156" class="label" fill="#9fd4ec">REALTIME HUB</text>
+  <text x="1178" y="172" class="small" fill="#4f5a69">websocket · JSON</text>
+  <line x1="1178" y1="182" x2="1342" y2="182" stroke="#1e2a36"/>
+  <g class="small">
+    <text x="1178" y="204" fill="#d3dce8">snapshot</text>
+    <text x="1178" y="220" fill="#6d7684">bbox-scoped, 24 h</text>
+    <text x="1178" y="246" fill="#d3dce8">delta</text>
+    <text x="1178" y="262" fill="#6d7684">upserts + removes</text>
+    <text x="1178" y="288" fill="#d3dce8">hotspot sequence</text>
+    <text x="1178" y="304" fill="#6d7684">seq &gt; lastSeq only</text>
+    <text x="1178" y="330" fill="#d3dce8">stats @ 1 Hz</text>
+    <text x="1178" y="346" fill="#6d7684">no geometry</text>
+    <text x="1178" y="368" class="m" font-size="8.5" fill="#7a4a62">↔ redis fan-out</text>
+  </g>
+
+  <path d="M1126 300 C1140 300, 1146 300, 1160 300" fill="none" stroke="#ff9a3d" stroke-width="2" marker-end="url(#arrowWarm)"/>
+  <text x="1128" y="290" class="m" font-size="9" fill="#b98a58">diff</text>
+
+
+  <!-- ================= CLIENT ================= -->
+  <g filter="url(#shadow)">
+    <rect x="1160" y="414" width="200" height="284" rx="14" fill="url(#client)" stroke="#2b4a5c"/>
+  </g>
+  <text x="1178" y="442" class="label" fill="#9fd4ec">WEB CLIENT</text>
+  <text x="1178" y="458" class="small" fill="#4f5a69">next.js app router</text>
+  <line x1="1178" y1="468" x2="1342" y2="468" stroke="#1e2a36"/>
+  <g class="small">
+    <text x="1178" y="490" fill="#d3dce8">MapLibre GL</text>
+    <text x="1178" y="506" fill="#6d7684">PMTiles v3 basemap</text>
+    <text x="1178" y="530" fill="#d3dce8">deck.gl overlay</text>
+    <text x="1178" y="546" fill="#6d7684">GPU-attribute hotspots</text>
+    <text x="1178" y="570" fill="#d3dce8">canvas wind</text>
+    <text x="1178" y="586" fill="#6d7684">u/v particle advection</text>
+    <text x="1178" y="610" fill="#d3dce8">delta store</text>
+    <text x="1178" y="626" fill="#6d7684">Map&lt;id, feature&gt; patch</text>
+    <text x="1178" y="650" fill="#d3dce8">24 h scrubber</text>
+    <text x="1178" y="666" fill="#6d7684">client-side time filter</text>
+  </g>
+
+  <path d="M1260 378 L1260 414" fill="none" stroke="#3f7f9c" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- bottom band -->
+  <line x1="40" y1="742" x2="1360" y2="742" stroke="#18222c"/>
+  <g>
+    <text x="40" y="772" class="label" font-size="9" fill="#5f6b7a">LATENCY BUDGET</text>
+    <text x="40" y="792" class="small" fill="#b6c2d1">observation → fusion ≤ 4 s</text>
+    <text x="40" y="808" class="small" fill="#6d7684">fusion → client ≤ 150 ms</text>
+
+    <text x="370" y="772" class="label" font-size="9" fill="#5f6b7a">GEOMETRY</text>
+    <text x="370" y="792" class="small" fill="#b6c2d1">Minkowski buffered convex hull</text>
+    <text x="370" y="808" class="small" fill="#6d7684">220 m–1.2 km · spherical area</text>
+
+    <text x="760" y="772" class="label" font-size="9" fill="#5f6b7a">TRANSPORT</text>
+    <text x="760" y="792" class="small" fill="#b6c2d1">delta patches, not re-fetches</text>
+    <text x="760" y="808" class="small" fill="#6d7684">per-client bbox · seq buffer</text>
+
+    <text x="1130" y="772" class="label" font-size="9" fill="#5f6b7a">PROOF</text>
+    <text x="1130" y="792" class="small" fill="#b6c2d1">minutes of warning before NIFC</text>
+    <text x="1130" y="808" class="small" fill="#6d7684">stored per merge · HUD metric</text>
+  </g>
+</svg>

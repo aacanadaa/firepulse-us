@@ -1,0 +1,49 @@
+flowchart LR
+  subgraph T1["TIER 1 · sub-5-minute"]
+    CAD["CAD / PulsePoint\ndispatch"]
+    SCAN["Scanner AI\ntranscripts"]
+    CAM["ALERTCalifornia\nPTZ smoke"]
+    CROWD["Crowd photo\n+ bearing"]
+  end
+  subgraph T2["TIER 2 · satellite"]
+    GOES["GOES-16/18 ABI\n5 min"]
+    VIIRS["FIRMS VIIRS\n375 m"]
+    MODIS["FIRMS MODIS\n1 km"]
+  end
+  subgraph T3["TIER 3 · context"]
+    AIR["PurpleAir / AirNow\nPM2.5"]
+    RAWS["RAWS wind\n& fuel"]
+    NWS["NWS Red Flag\npolygons"]
+  end
+  subgraph T4["TIER 4 · ground truth"]
+    WFIGS["NIFC WFIGS"]
+    CAL["CAL FIRE /\nInciWeb"]
+  end
+
+  BUS["Ingestion bus\nnormalize · project bearings\nH3 r8 · dedupe · tier"]
+  PG[("PostgreSQL + PostGIS\nraw_signal · fire_incident\nofficial_perimeter (SCD-2)\nestimate_merge · rollups")]
+  REDIS[("Redis\nGEO viewport cache\nPub/Sub fan-out")]
+  FUSION["Fusion engine (4 s)\nDBSCAN 2 km / 30 min\nnoisy-OR confidence\nbuffered hull · merge · diff"]
+  HUB["Realtime hub\nWS snapshot + GeoJSON deltas\nper-client bbox filters"]
+  CLIENT["MapLibre GL + deck.gl\nPMTiles · typed arrays\n24 h scrubber"]
+
+  CAD --> BUS
+  SCAN --> BUS
+  CAM --> BUS
+  CROWD --> BUS
+  GOES --> BUS
+  VIIRS --> BUS
+  MODIS --> BUS
+  AIR --> BUS
+  RAWS --> BUS
+  NWS --> BUS
+  WFIGS --> FUSION
+  CAL --> FUSION
+
+  BUS --> PG
+  PG <--> FUSION
+  FUSION <--> REDIS
+  FUSION --> HUB
+  HUB <--> REDIS
+  HUB --> CLIENT
+  PG <-. viewport .-> REDIS
