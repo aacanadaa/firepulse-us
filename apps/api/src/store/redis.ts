@@ -163,6 +163,26 @@ export class RedisCache {
     }
   }
 
+  /** Best-effort JSON value with a TTL; null on miss or outage. */
+  async getJson<T>(key: string): Promise<T | null> {
+    if (!this.ready || !this.client) return null;
+    try {
+      const raw = await this.client.get(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async setJson(key: string, value: unknown, ttlMs: number): Promise<void> {
+    if (!this.ready || !this.client) return;
+    try {
+      await this.client.set(key, JSON.stringify(value), "PX", Math.max(1000, Math.round(ttlMs)));
+    } catch {
+      /* cache is best-effort */
+    }
+  }
+
   async close(): Promise<void> {
     this.ready = false;
     await this.client?.quit().catch(() => undefined);

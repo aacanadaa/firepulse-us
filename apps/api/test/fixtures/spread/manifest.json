@@ -1,0 +1,642 @@
+{
+ "model": {
+  "run": "unet-large-dice",
+  "threshold": 0.12
+ },
+ "onnx": {
+  "input": {
+   "file": "onnx_input.f32",
+   "dtype": "float32",
+   "shape": [
+    2,
+    12,
+    64,
+    64
+   ]
+  },
+  "expected": {
+   "file": "onnx_expected.f32",
+   "dtype": "float32",
+   "shape": [
+    2,
+    64,
+    64
+   ]
+  },
+  "note": "expected = PyTorch predict() on the same raw input"
+ },
+ "weather": {
+  "response": "open_meteo.json",
+  "localDay": "2026-10-20",
+  "daily": [
+   {
+    "tmmn": 285.04999999999995,
+    "tmmx": 293.45,
+    "sph": 0.005816295675640095,
+    "pr": 0.0,
+    "vs": 5.3495833333333325,
+    "u_mean": -2.4431309700012207,
+    "v_mean": 4.6283698081970215,
+    "rh_min": 34.0,
+    "gust_max": 11.4
+   },
+   {
+    "tmmn": 286.75,
+    "tmmx": 295.45,
+    "sph": 0.006265953820357221,
+    "pr": 0.0,
+    "vs": 5.0,
+    "u_mean": 0.1245756670832634,
+    "v_mean": 4.877891540527344,
+    "rh_min": 33.0,
+    "gust_max": 10.3
+   },
+   {
+    "tmmn": 285.84999999999997,
+    "tmmx": 298.04999999999995,
+    "sph": 0.006370570930136707,
+    "pr": 0.0,
+    "vs": 3.3991666666666664,
+    "u_mean": 1.2153347730636597,
+    "v_mean": 2.542642116546631,
+    "rh_min": 31.0,
+    "gust_max": 9.3
+   },
+   {
+    "tmmn": 286.34999999999997,
+    "tmmx": 294.04999999999995,
+    "sph": 0.005966934738981751,
+    "pr": 0.0,
+    "vs": 4.819583333333333,
+    "u_mean": -0.5220831036567688,
+    "v_mean": 4.407883167266846,
+    "rh_min": 36.0,
+    "gust_max": 10.4
+   },
+   {
+    "tmmn": 278.54999999999995,
+    "tmmx": 285.04999999999995,
+    "sph": 0.005671055734265187,
+    "pr": 0.0,
+    "vs": 5.797916666666666,
+    "u_mean": 0.016694137826561928,
+    "v_mean": 5.499208450317383,
+    "rh_min": 48.0,
+    "gust_max": 12.6
+   },
+   {
+    "tmmn": 287.65,
+    "tmmx": 297.15,
+    "sph": 0.006411278157220017,
+    "pr": 0.0,
+    "vs": 2.7862500000000003,
+    "u_mean": -0.9848694205284119,
+    "v_mean": 1.5357818603515625,
+    "rh_min": 30.0,
+    "gust_max": 9.2
+   },
+   {
+    "tmmn": 283.54999999999995,
+    "tmmx": 291.04999999999995,
+    "sph": 0.006433158411312908,
+    "pr": 0.0,
+    "vs": 4.494166666666667,
+    "u_mean": -1.0331388711929321,
+    "v_mean": 4.137294292449951,
+    "rh_min": 46.0,
+    "gust_max": 11.4
+   },
+   {
+    "tmmn": 282.04999999999995,
+    "tmmx": 288.15,
+    "sph": 0.00652627960682127,
+    "pr": 0.0,
+    "vs": 6.373333333333332,
+    "u_mean": -1.8814820051193237,
+    "v_mean": 5.868885040283203,
+    "rh_min": 51.0,
+    "gust_max": 13.7
+   },
+   {
+    "tmmn": 289.54999999999995,
+    "tmmx": 302.54999999999995,
+    "sph": 0.008224879147186455,
+    "pr": 0.0,
+    "vs": 2.0995833333333334,
+    "u_mean": 1.087957501411438,
+    "v_mean": 0.22138650715351105,
+    "rh_min": 26.0,
+    "gust_max": 7.4
+   },
+   {
+    "tmmn": 289.25,
+    "tmmx": 302.34999999999997,
+    "sph": 0.0075193918734500105,
+    "pr": 0.0,
+    "vs": 2.192083333333333,
+    "u_mean": 0.9070728421211243,
+    "v_mean": 0.2760791480541229,
+    "rh_min": 26.0,
+    "gust_max": 8.7
+   },
+   {
+    "tmmn": 288.15,
+    "tmmx": 303.45,
+    "sph": 0.007672975718043405,
+    "pr": 0.0,
+    "vs": 1.8500000000000003,
+    "u_mean": 0.4125188887119293,
+    "v_mean": 0.8286423683166504,
+    "rh_min": 24.0,
+    "gust_max": 6.4
+   },
+   {
+    "tmmn": 287.65,
+    "tmmx": 298.34999999999997,
+    "sph": 0.006851771200443879,
+    "pr": 0.0,
+    "vs": 2.94,
+    "u_mean": 0.17872114479541779,
+    "v_mean": 0.38309502601623535,
+    "rh_min": 30.0,
+    "gust_max": 6.9
+   },
+   {
+    "tmmn": 286.95,
+    "tmmx": 303.15,
+    "sph": 0.009167588528900544,
+    "pr": 0.0,
+    "vs": 2.6583333333333337,
+    "u_mean": 2.048581838607788,
+    "v_mean": 0.17310619354248047,
+    "rh_min": 28.0,
+    "gust_max": 9.7
+   },
+   {
+    "tmmn": 287.75,
+    "tmmx": 304.15,
+    "sph": 0.008448533219816002,
+    "pr": 0.0,
+    "vs": 2.282083333333333,
+    "u_mean": 1.5796623229980469,
+    "v_mean": -0.6291771531105042,
+    "rh_min": 25.0,
+    "gust_max": 9.8
+   },
+   {
+    "tmmn": 288.25,
+    "tmmx": 301.75,
+    "sph": 0.006828472846179917,
+    "pr": 0.0,
+    "vs": 2.0829166666666663,
+    "u_mean": -0.16619771718978882,
+    "v_mean": 0.4540069103240967,
+    "rh_min": 24.0,
+    "gust_max": 7.2
+   },
+   {
+    "tmmn": 286.95,
+    "tmmx": 299.04999999999995,
+    "sph": 0.006677263258870095,
+    "pr": 0.0,
+    "vs": 2.7395833333333335,
+    "u_mean": -1.5149143934249878,
+    "v_mean": 1.3182796239852905,
+    "rh_min": 31.0,
+    "gust_max": 8.5
+   }
+  ],
+  "fields": {
+   "file": "weather_fields.f64",
+   "dtype": "float64",
+   "shape": [
+    6,
+    64,
+    64
+   ],
+   "channels": [
+    "wind_u",
+    "wind_v",
+    "tmmn",
+    "tmmx",
+    "sph",
+    "pr"
+   ]
+  }
+ },
+ "window": {
+  "hotspots": [
+   [
+    -117.253504,
+    34.209911
+   ],
+   [
+    -117.283525,
+    34.188175
+   ],
+   [
+    -117.282362,
+    34.183373
+   ],
+   [
+    -117.261405,
+    34.208672
+   ],
+   [
+    -117.285552,
+    34.197061
+   ],
+   [
+    -117.270944,
+    34.205579
+   ],
+   [
+    -117.266386,
+    34.197253
+   ],
+   [
+    -117.293927,
+    34.195679
+   ],
+   [
+    -117.292755,
+    34.168393
+   ],
+   [
+    -117.238758,
+    34.224693
+   ],
+   [
+    -117.26741,
+    34.199147
+   ],
+   [
+    -117.243391,
+    34.208321
+   ],
+   [
+    -117.286101,
+    34.182581
+   ],
+   [
+    -117.27646,
+    34.198314
+   ],
+   [
+    -117.241962,
+    34.231857
+   ],
+   [
+    -117.281035,
+    34.191715
+   ],
+   [
+    -117.225116,
+    34.228052
+   ],
+   [
+    -117.289249,
+    34.194084
+   ],
+   [
+    -117.278925,
+    34.192576
+   ],
+   [
+    -117.223167,
+    34.220845
+   ],
+   [
+    -117.258827,
+    34.213638
+   ],
+   [
+    -117.271616,
+    34.203143
+   ],
+   [
+    -117.278436,
+    34.18038
+   ],
+   [
+    -117.247919,
+    34.198031
+   ],
+   [
+    -117.254445,
+    34.223645
+   ],
+   [
+    -117.239321,
+    34.221949
+   ],
+   [
+    -117.272484,
+    34.189494
+   ],
+   [
+    -117.25744,
+    34.208227
+   ],
+   [
+    -117.263818,
+    34.212671
+   ],
+   [
+    -117.259414,
+    34.208763
+   ],
+   [
+    -117.23548,
+    34.21943
+   ],
+   [
+    -117.274113,
+    34.204654
+   ],
+   [
+    -117.268295,
+    34.188482
+   ],
+   [
+    -117.237807,
+    34.218587
+   ],
+   [
+    -117.244018,
+    34.201396
+   ],
+   [
+    -117.256339,
+    34.214656
+   ],
+   [
+    -117.263902,
+    34.213484
+   ],
+   [
+    -117.292606,
+    34.192509
+   ],
+   [
+    -117.256657,
+    34.219298
+   ],
+   [
+    -117.260489,
+    34.205398
+   ],
+   [
+    -117.5434,
+    34.3871
+   ],
+   [
+    -116.9934,
+    33.8771
+   ],
+   [
+    -116.3934,
+    34.1871
+   ]
+  ],
+  "windowHotspots": 42,
+  "center": [
+   -117.26362280663804,
+   34.20067408389529
+  ],
+  "corners": {
+   "nw": [
+    -117.61118492253374,
+    34.490073038441565
+   ],
+   "ne": [
+    -116.91606069074234,
+    34.490073038441565
+   ],
+   "se": [
+    -116.91606069074234,
+    33.91127512934901
+   ],
+   "sw": [
+    -117.61118492253374,
+    33.91127512934901
+   ]
+  },
+  "cellCenters": [
+   [
+    0,
+    0,
+    -117.60575426447286,
+    34.48555117977678
+   ],
+   [
+    0,
+    63,
+    -116.92149134880322,
+    34.48555117977678
+   ],
+   [
+    31,
+    31,
+    -117.26905346469891,
+    34.205195942560074
+   ],
+   [
+    32,
+    32,
+    -117.25819214857717,
+    34.1961522252305
+   ],
+   [
+    63,
+    0,
+    -117.60575426447286,
+    33.915796988013795
+   ],
+   [
+    63,
+    63,
+    -116.92149134880322,
+    33.915796988013795
+   ],
+   [
+    10,
+    50,
+    -117.06268845838584,
+    34.395114006481066
+   ]
+  ],
+  "mask": {
+   "file": "window_mask.u8",
+   "dtype": "uint8",
+   "shape": [
+    64,
+    64
+   ]
+  },
+  "burningCells": 21
+ },
+ "summary": {
+  "threshold": 0.12,
+  "fire": {
+   "file": "summary_fire.u8",
+   "dtype": "uint8",
+   "shape": [
+    64,
+    64
+   ]
+  },
+  "scores": {
+   "file": "summary_scores.f32",
+   "dtype": "float32",
+   "shape": [
+    11,
+    64,
+    64
+   ]
+  },
+  "cases": [
+   {
+    "name": "north",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 132,
+     "newCells": 116,
+     "direction": "north",
+     "bearing": 0,
+     "km": 7.1,
+     "text": "The model leans toward growth to the north.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "northeast",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 133,
+     "newCells": 117,
+     "direction": "northeast",
+     "bearing": 45,
+     "km": 7.1,
+     "text": "The model leans toward growth to the northeast.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "east",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 132,
+     "newCells": 116,
+     "direction": "east",
+     "bearing": 90,
+     "km": 7.1,
+     "text": "The model leans toward growth to the east.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "southeast",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 133,
+     "newCells": 117,
+     "direction": "southeast",
+     "bearing": 135,
+     "km": 7.1,
+     "text": "The model leans toward growth to the southeast.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "south",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 132,
+     "newCells": 116,
+     "direction": "south",
+     "bearing": 180,
+     "km": 7.1,
+     "text": "The model leans toward growth to the south.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "southwest",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 133,
+     "newCells": 117,
+     "direction": "southwest",
+     "bearing": 225,
+     "km": 7.1,
+     "text": "The model leans toward growth to the southwest.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "west",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 132,
+     "newCells": 116,
+     "direction": "west",
+     "bearing": 270,
+     "km": 7.1,
+     "text": "The model leans toward growth to the west.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "northwest",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 133,
+     "newCells": 117,
+     "direction": "northwest",
+     "bearing": 315,
+     "km": 7.1,
+     "text": "The model leans toward growth to the northwest.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "none",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 0,
+     "newCells": 0,
+     "direction": null,
+     "km": 0.0,
+     "text": "The model expects little or no active fire here tomorrow.",
+     "level": "none"
+    }
+   },
+   {
+    "name": "ring",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 96,
+     "newCells": 80,
+     "direction": null,
+     "km": 0.0,
+     "text": "The model expects activity tomorrow, but no clear direction of growth.",
+     "level": "high"
+    }
+   },
+   {
+    "name": "few",
+    "expected": {
+     "cellsToday": 16,
+     "cellsTomorrow": 19,
+     "newCells": 3,
+     "direction": "north",
+     "bearing": 5,
+     "km": 5.5,
+     "text": "The model leans toward growth to the north.",
+     "level": "low"
+    }
+   }
+  ]
+ }
+}

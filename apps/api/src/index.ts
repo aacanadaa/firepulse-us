@@ -9,6 +9,7 @@ import { IngestMetrics } from "./realtime/metrics.js";
 import { RealtimeHub } from "./realtime/hub.js";
 import { Pipeline } from "./pipeline.js";
 import { createServer } from "./server.js";
+import { SpreadRuntime } from "./spread/index.js";
 import { FireSimulation } from "./simulation/generator.js";
 import { createSimulatedAdapters, createSimulatedOfficialAdapter } from "./sources/simulated.js";
 import { createFirmsAdapters, createNwsAdapter, createWfigsAdapter } from "./sources/live.js";
@@ -104,6 +105,16 @@ async function main(): Promise<void> {
 
   await pipeline.bootstrap();
 
+  const spread = new SpreadRuntime({
+    config,
+    log,
+    cache: cache.available ? cache : null,
+    incidents: engine,
+    hotspots,
+  });
+  // Downloads (if any) happen in the background; the API serves meanwhile.
+  void spread.start();
+
   const app = await createServer({
     config,
     store,
@@ -113,6 +124,7 @@ async function main(): Promise<void> {
     hotspots,
     pipeline,
     simulation,
+    spread,
     log,
     startedAt,
   });

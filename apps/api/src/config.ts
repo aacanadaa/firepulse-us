@@ -1,4 +1,8 @@
+import { fileURLToPath } from "node:url";
 import type { PublicConfig } from "@firepulse/protocol";
+
+/** apps/api/assets/spread, from both src/ (tsx) and dist/ (node). */
+const SPREAD_ASSETS = fileURLToPath(new URL("../assets/spread/", import.meta.url));
 
 function num(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -74,6 +78,30 @@ export const config = {
   cache: {
     viewportTtlMs: num("VIEWPORT_CACHE_TTL_MS", 5_000),
     bboxPrecision: 3,
+  },
+
+  spread: {
+    enabled: bool("SPREAD_ENABLED", true),
+    modelPath: process.env.SPREAD_MODEL_PATH || `${SPREAD_ASSETS}firesight-best.onnx`,
+    staticDir: process.env.SPREAD_STATIC_DIR || `${SPREAD_ASSETS}static_conus`,
+    /** Optional base URL holding firesight-best.onnx, firesight-model.json, static_conus.tar.gz. */
+    assetsUrl: process.env.SPREAD_ASSETS_URL ?? "",
+    /** Estimates below this confidence get no forecast. */
+    minConfidence: num("SPREAD_MIN_CONFIDENCE", 40),
+    maxConcurrent: num("SPREAD_MAX_CONCURRENT", 2),
+    queueLimit: 20,
+    /** Hard limit for one forecast. */
+    timeoutMs: 30_000,
+    /** How long the HTTP route waits before answering 202. */
+    routeWaitMs: 25_000,
+    cacheTtlMs: 3_600_000,
+    /** Global Open-Meteo budget, in locations per minute. */
+    openMeteoPerMinute: 300,
+    httpTimeoutMs: 15_000,
+    /** NWS asks for a contact in the User-Agent. */
+    userAgent:
+      process.env.SPREAD_USER_AGENT ||
+      "FirePulse/1.0 (next-day spread forecasts; set SPREAD_USER_AGENT with a contact)",
   },
 
   h3Resolution: 8,

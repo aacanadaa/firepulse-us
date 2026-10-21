@@ -10,3 +10,4 @@ screenshots
 *.log
 .env
 .env.local
+apps/api/assets

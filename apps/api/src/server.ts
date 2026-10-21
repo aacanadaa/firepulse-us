@@ -11,6 +11,7 @@ import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
 import type { Pipeline } from "./pipeline.js";
 import type { FireSimulation } from "./simulation/generator.js";
+import type { SpreadRuntime } from "./spread/index.js";
 import type { Logger } from "pino";
 
 export interface ServerDeps {
@@ -22,6 +23,7 @@ export interface ServerDeps {
   hotspots: HotspotLog;
   pipeline: Pipeline;
   simulation: FireSimulation | null;
+  spread: SpreadRuntime;
   log: Logger;
   startedAt: number;
 }
@@ -44,7 +46,7 @@ function bucket(count: number): string {
 }
 
 export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof Fastify>> {
-  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, log } = deps;
+  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, spread, log } = deps;
 
   const app = Fastify({
     loggerInstance: log,
@@ -72,6 +74,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       "/api/v1/config",
       "/api/v1/incidents",
       "/api/v1/incidents/:id",
+      "/api/v1/incidents/:id/spread",
       "/api/v1/hotspots",
       "/api/v1/timeline",
       "/api/v1/stats",
@@ -91,6 +94,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       uptimeSec: Math.round((Date.now() - deps.startedAt) / 1000),
       simulated: config.simulated,
       clients: hub.clientCount,
+      spread: spread.health(),
     });
   });
 
@@ -172,6 +176,34 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       neighbors,
       series: engine.series(incident.id),
     };
+  });
+
+  app.get<{ Params: { id: string } }>("/api/v1/incidents/:id/spread", async (req, reply) => {
+    const incident = engine.incident(req.params.id);
+    if (!incident) return reply.code(404).send({ error: "incident not found" });
+    reply.header("Cache-Control", "no-store");
+    const service = spread.service;
+    if (!service) {
+      return {
+        incidentId: incident.id,
+        status: spread.state === "downloading" ? "computing" : "unavailable",
+        reason:
+          spread.state === "downloading"
+            ? "The spread model is still loading."
+            : "Spread predictions are not enabled on this server.",
+      };
+    }
+    let timer: NodeJS.Timeout | undefined;
+    const result = await Promise.race([
+      service.forecast(incident.id),
+      new Promise<"wait">((resolve) => {
+        timer = setTimeout(() => resolve("wait"), config.spread.routeWaitMs);
+      }),
+    ]);
+    clearTimeout(timer);
+    if (result === "wait") return reply.code(202).send({ incidentId: incident.id, status: "computing" });
+    if (!result) return reply.code(404).send({ error: "incident not found" });
+    return result;
   });
 
   app.get<{ Querystring: { bbox?: string; from?: string; to?: string; limit?: string } }>(
