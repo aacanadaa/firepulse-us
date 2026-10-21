@@ -356,3 +356,76 @@ export interface IncidentDetail {
   /** Hotspot history for the incident's footprint, for the evidence chart. */
   series: { t: string; frp: number; hotspots: number; confidence: number }[];
 }
+
+/* ------------------------------------------------------------------ */
+/* Next-day spread forecast                                            */
+/* ------------------------------------------------------------------ */
+
+export type SpreadStatus = "ready" | "computing" | "unavailable";
+
+export type SpreadLevel = "none" | "low" | "moderate" | "high";
+
+export interface SpreadCell {
+  /** Closed ring of the 1 km cell's corners, [lon, lat]. */
+  ring: Ring;
+  /** Model score 0..1. Ranks cells; it is NOT a calibrated probability. */
+  score: number;
+  /** Satellite saw fire in this cell today (model input). */
+  burning: boolean;
+}
+
+export interface SpreadSummary {
+  cellsToday: number;
+  /** Cells near the fire at or above the threshold. */
+  cellsTomorrow: number;
+  /** Of those, cells not burning today. */
+  newCells: number;
+  /** 8-point compass word toward the expected growth, or null. */
+  direction: string | null;
+  /** Degrees clockwise from north, or null. */
+  bearing: number | null;
+  /** Distance from today's fire to the centre of expected growth. */
+  km: number;
+  text: string;
+  level: SpreadLevel;
+}
+
+export interface SpreadWeather {
+  tmaxF: number;
+  tminF: number;
+  rhMin: number;
+  windMph: number;
+  gustMph: number;
+  /** 8-point compass word the wind blows FROM. */
+  windFrom: string;
+  windFromDeg: number;
+  rainIn: number;
+  erc: number | null;
+  pdsi: number | null;
+  /** null when the NWS lookup failed. */
+  redFlag: boolean | null;
+}
+
+export interface SpreadForecast {
+  incidentId: string;
+  status: SpreadStatus;
+  /** Plain-English reason when status !== "ready". */
+  reason?: string;
+  generatedAt?: string;
+  /** ISO time the forecast stops being meaningful (~24 h after generation). */
+  validFor?: string;
+  /** Outer corners of the 64 x 64 km input window, [lon, lat]. */
+  corners?: { nw: [number, number]; ne: [number, number]; se: [number, number]; sw: [number, number] };
+  threshold?: number;
+  cells?: SpreadCell[];
+  summary?: SpreadSummary;
+  weather?: SpreadWeather;
+  /** Inputs the model ran without (it substitutes the training mean). */
+  missingInputs?: string[];
+  model?: { name: string; run: string; testAucPr: number };
+  /** True for simulator incidents. */
+  demo?: boolean;
+}
+
+/** Display bands for spread scores. Never show scores as percentages. */
+export const SPREAD_BANDS = { faint: 0.06, likely: 0.12, veryLikely: 0.5 } as const;
