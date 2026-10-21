@@ -87,7 +87,8 @@ export function cellCenters(w: SpreadWindow): { lons: Float64Array; lats: Float6
 export type Outline =
   | { type: "Polygon"; coordinates: number[][][] }
   | { type: "MultiPolygon"; coordinates: number[][][][] }
-  | { type: "GeometryCollection"; geometries: Outline[] };
+  | { type: "GeometryCollection"; geometries: Outline[] }
+  | { type: "Point" | "LineString" | "MultiLineString" | "MultiPoint"; coordinates: unknown };
 
 /** Fallback when the static index has no outline. */
 const CONUS_BBOX: [number, number, number, number] = [-124.85, 24.4, -66.85, 49.4];
@@ -111,7 +112,8 @@ function inPolygon(lon: number, lat: number, rings: number[][][]): boolean {
 function inOutline(lon: number, lat: number, g: Outline): boolean {
   if (g.type === "Polygon") return inPolygon(lon, lat, g.coordinates);
   if (g.type === "MultiPolygon") return g.coordinates.some((p) => inPolygon(lon, lat, p));
-  return g.geometries.some((child) => inOutline(lon, lat, child));
+  if (g.type === "GeometryCollection") return g.geometries.some((child) => inOutline(lon, lat, child));
+  return false; // points and lines left over from simplification
 }
 
 export function insideConus(lon: number, lat: number, outline: Outline | null): boolean {

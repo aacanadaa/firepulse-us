@@ -29,6 +29,7 @@ const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
   { key: "official", label: "Official ground truth", note: "NIFC / CAL FIRE perimeters" },
   { key: "estimated", label: "Early estimates", note: "Fused active fire zones" },
   { key: "thermal", label: "Thermal detections", note: "GOES, VIIRS, MODIS" },
+  { key: "spread", label: "Spread forecast", note: "Selected fire, next day · experimental" },
   { key: "wind", label: "Wind field", note: "Particle advection" },
   { key: "hex", label: "H3 cells", note: "Resolution 8 identity grid" },
   { key: "labels", label: "Place and fire labels", note: "States, cities, incidents" },

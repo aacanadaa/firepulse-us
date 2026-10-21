@@ -1,8 +1,15 @@
 "use client";
 
-import { MODALITY_LABEL, type IncidentDetail, type IncidentFeature } from "@firepulse/protocol";
+import {
+  MODALITY_LABEL,
+  type IncidentDetail,
+  type IncidentFeature,
+  type SpreadForecast,
+} from "@firepulse/protocol";
 import { formatAcres, formatAge, formatDate, formatMw, formatNumber } from "@/lib/format";
+import type { MapType } from "@/lib/places";
 import { Icon, Sparkline } from "./ui";
+import SpreadSection from "./SpreadSection";
 
 interface Props {
   incident: IncidentFeature;
@@ -11,6 +18,9 @@ interface Props {
   onClose: () => void;
   onFocus: () => void;
   loading: boolean;
+  spread: SpreadForecast | null;
+  spreadLoading: boolean;
+  mapType: MapType;
 }
 
 export default function DetailPanel({
@@ -20,6 +30,9 @@ export default function DetailPanel({
   onClose,
   onFocus,
   loading,
+  spread,
+  spreadLoading,
+  mapType,
 }: Props) {
   const p = incident.properties;
   const b = p.confidenceBreakdown;
@@ -140,6 +153,8 @@ export default function DetailPanel({
             </div>
           </div>
         </div>
+
+        <SpreadSection forecast={spread} loading={spreadLoading} mapType={mapType} now={now} />
 
         <div className="ins-section">
           <div className="ins-section-head">

@@ -6,6 +6,7 @@ import type {
   IncidentFeature,
   PublicConfig,
   ServerMessage,
+  SpreadForecast,
   WindField,
 } from "@firepulse/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -272,4 +273,82 @@ export function useLiveFeed(): LiveFeed {
   );
 
   return { store, status, latencyMs, lastUpdate, send, subscribeViewport, attempts };
+}
+
+/* ------------------------------------------------------------------ */
+/* Spread forecast hook                                                */
+/* ------------------------------------------------------------------ */
+
+const SPREAD_POLL_MS = 3_000;
+const SPREAD_MAX_WAIT_MS = 60_000;
+
+export interface SpreadState {
+  forecast: SpreadForecast | null;
+  loading: boolean;
+}
+
+/**
+ * Next-day spread forecast for the selected incident. The API answers 202
+ * while it works; poll every 3 s for up to 60 s, and abort the moment the
+ * selection changes so a slow forecast never lands on the wrong fire.
+ */
+export function useSpread(selectedId: string | null): SpreadState {
+  const [state, setState] = useState<SpreadState>({ forecast: null, loading: false });
+
+  useEffect(() => {
+    if (!selectedId) {
+      setState({ forecast: null, loading: false });
+      return;
+    }
+    const controller = new AbortController();
+    const started = Date.now();
+    let timer: number | undefined;
+    setState({ forecast: null, loading: true });
+
+    const load = async () => {
+      try {
+        const res = await fetch(`${apiBase()}/api/v1/incidents/${encodeURIComponent(selectedId)}/spread`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (controller.signal.aborted) return;
+        if (res.status === 404) {
+          setState({
+            forecast: { incidentId: selectedId, status: "unavailable", reason: "This fire is no longer tracked." },
+            loading: false,
+          });
+          return;
+        }
+        if (!res.ok && res.status !== 202) throw new Error(String(res.status));
+        const body = (await res.json()) as SpreadForecast;
+        if (controller.signal.aborted) return;
+        if (body.status === "computing") {
+          if (Date.now() - started >= SPREAD_MAX_WAIT_MS) {
+            setState({
+              forecast: { incidentId: selectedId, status: "unavailable", reason: "The prediction is taking too long. Try again in a minute." },
+              loading: false,
+            });
+            return;
+          }
+          setState({ forecast: body, loading: true });
+          timer = window.setTimeout(load, SPREAD_POLL_MS);
+          return;
+        }
+        setState({ forecast: body, loading: false });
+      } catch {
+        if (controller.signal.aborted) return;
+        setState({
+          forecast: { incidentId: selectedId, status: "unavailable", reason: "Couldn't reach the prediction service." },
+          loading: false,
+        });
+      }
+    };
+    void load();
+    return () => {
+      controller.abort();
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [selectedId]);
+
+  return state;
 }

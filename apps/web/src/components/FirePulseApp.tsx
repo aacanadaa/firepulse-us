@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { IncidentDetail, IncidentFeature } from "@firepulse/protocol";
-import { apiGet, useLiveFeed, type TimelineResponse } from "@/lib/store";
+import { apiGet, useLiveFeed, useSpread, type TimelineResponse } from "@/lib/store";
 import { selectHotspots, selectIncidents, type FeedTab, type KindFilter } from "@/lib/select";
 import type { MapType } from "@/lib/places";
 import type { LayerFlags } from "./MapCanvas";
@@ -70,6 +70,7 @@ export default function FirePulseApp() {
     wind: true,
     hex: false,
     labels: true,
+    spread: true,
   });
 
   const now = clock + store.serverSkewMs;
@@ -156,6 +157,9 @@ export default function FirePulseApp() {
       window.clearInterval(id);
     };
   }, [selectedId]);
+
+  const spread = useSpread(selectedId);
+  const selectedSpread = spread.forecast?.incidentId === selectedId ? spread.forecast : null;
 
   /* ---------------------------- derived data ---------------------------- */
   const incidents = useMemo(
@@ -322,6 +326,7 @@ export default function FirePulseApp() {
             incidents={mapIncidents}
             hotspots={hotspots}
             wind={store.wind}
+            spread={selectedSpread}
             selectedId={selectedId}
             cursor={cursor}
             layers={layers}
@@ -361,6 +366,9 @@ export default function FirePulseApp() {
             onClose={() => setSelectedId(null)}
             onFocus={() => setFocusNonce((n) => n + 1)}
             loading={detailLoading}
+            spread={selectedSpread}
+            spreadLoading={spread.loading}
+            mapType={mapType}
           />
         ) : null}
       </div>

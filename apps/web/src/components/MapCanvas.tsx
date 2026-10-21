@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type maplibregl from "maplibre-gl";
-import type { HotspotFeature, IncidentFeature, WindField } from "@firepulse/protocol";
+import type { HotspotFeature, IncidentFeature, SpreadForecast, WindField } from "@firepulse/protocol";
 import {
   CITY_LABELS,
   MAP_THEMES,
@@ -26,6 +26,7 @@ import {
   officialPickLayer,
   rgba,
   selectedOutlineLayer,
+  spreadLayers,
 } from "@/lib/layers";
 import { formatAcres, formatAge, formatMw, sourceMeta } from "@/lib/format";
 import WindParticles from "./WindParticles";
@@ -37,12 +38,15 @@ export interface LayerFlags {
   wind: boolean;
   hex: boolean;
   labels: boolean;
+  spread: boolean;
 }
 
 interface Props {
   incidents: IncidentFeature[];
   hotspots: HotspotFeature[];
   wind: WindField | null;
+  /** Forecast for the selected incident only. */
+  spread: SpreadForecast | null;
   selectedId: string | null;
   cursor: number | null;
   layers: LayerFlags;
@@ -85,6 +89,7 @@ export default function MapCanvas({
   incidents,
   hotspots,
   wind,
+  spread,
   selectedId,
   cursor,
   layers,
@@ -398,6 +403,8 @@ export default function MapCanvas({
   const deckLayers = useMemo(() => {
     const now = cursor ?? Date.now();
     return [
+      // Below every outline and hotspot.
+      ...spreadLayers(spread, layers.spread, mapType, theme),
       officialPickLayer(officialFeatures, layers.official),
       selectedOutlineLayer(selected, theme),
       estimatedZoneLayer(layers.estimated ? estimated : [], layers.estimated, theme),
@@ -478,6 +485,8 @@ export default function MapCanvas({
     layers.thermal,
     layers.hex,
     layers.labels,
+    layers.spread,
+    spread,
     mapType,
     theme,
   ]);

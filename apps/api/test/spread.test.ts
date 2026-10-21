@@ -9,7 +9,7 @@ import { CHANNELS, OnnxSpreadModel, WIN, type ModelMeta, type Predictor } from "
 import { StaticLayers } from "../src/spread/static.js";
 import { buildFireMask } from "../src/spread/fireMask.js";
 import { summarize } from "../src/spread/summary.js";
-import { cellLonLat, makeWindow, windowCorners } from "../src/spread/window.js";
+import { cellLonLat, insideConus, makeWindow, windowCorners } from "../src/spread/window.js";
 import {
   dailyWeather,
   localDay,
@@ -228,6 +228,20 @@ describe("window", () => {
     const expected = bin(fx.mask.file, Uint8Array);
     expect(Array.from(mask)).toEqual(Array.from(expected));
     expect(mask.reduce((a, b) => a + b, 0)).toBe(fx.burningCells);
+  });
+
+  it("checks CONUS against an outline with stray points and lines", () => {
+    const outline = {
+      type: "GeometryCollection" as const,
+      geometries: [
+        { type: "Point" as const, coordinates: [-100, 40] },
+        { type: "LineString" as const, coordinates: [[-100, 40], [-99, 41]] },
+        { type: "Polygon" as const, coordinates: [[[-120, 35], [-110, 35], [-110, 45], [-120, 45], [-120, 35]]] },
+      ],
+    };
+    expect(insideConus(-115, 40, outline)).toBe(true);
+    expect(insideConus(-100, 40, outline)).toBe(false);
+    expect(insideConus(-150, 61, outline)).toBe(false);
   });
 
   it("uses only viirs/modis from the last 24 h", () => {

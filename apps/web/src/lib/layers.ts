@@ -2,7 +2,7 @@ import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/l
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import { gridDisk, latLngToCell } from "h3-js";
-import type { HotspotFeature, IncidentFeature } from "@firepulse/protocol";
+import { SPREAD_BANDS, type HotspotFeature, type IncidentFeature, type SpreadCell, type SpreadForecast } from "@firepulse/protocol";
 import { ageBucket } from "./select";
 import type { MapTheme, MapType } from "./places";
 
@@ -380,4 +380,84 @@ export function h3Layer(hexes: HexDatum[], visible: boolean, theme: MapTheme) {
     getLineWidth: 0.7,
     opacity: 0.85,
   });
+}
+
+/* ------------------------------------------------------------------ */
+/* Next-day spread                                                     */
+/* ------------------------------------------------------------------ */
+
+export type SpreadBand = "faint" | "likely" | "veryLikely";
+
+export function spreadBand(score: number): SpreadBand | null {
+  if (score >= SPREAD_BANDS.veryLikely) return "veryLikely";
+  if (score >= SPREAD_BANDS.likely) return "likely";
+  if (score >= SPREAD_BANDS.faint) return "faint";
+  return null;
+}
+
+/**
+ * Bands reuse the thermal ramp (ember -> deep red) at 35-70 % opacity, so
+ * the forecast reads as "more fire" without introducing a new accent.
+ */
+export function spreadColors(mapType: MapType): Record<SpreadBand, RGBA> {
+  const ramp = rampFor(mapType);
+  const mid: [number, number, number] = [
+    Math.round((ramp.fresh[0] + ramp.recent[0]) / 2),
+    Math.round((ramp.fresh[1] + ramp.recent[1]) / 2),
+    Math.round((ramp.fresh[2] + ramp.recent[2]) / 2),
+  ];
+  return {
+    faint: [...ramp.fresh, Math.round(0.35 * 255)],
+    likely: [...mid, Math.round(0.52 * 255)],
+    veryLikely: [...ramp.recent, Math.round(0.7 * 255)],
+  };
+}
+
+export function spreadSwatches(mapType: MapType): { band: SpreadBand; label: string; color: string }[] {
+  const c = spreadColors(mapType);
+  const css = (v: RGBA) => `rgba(${v[0]}, ${v[1]}, ${v[2]}, ${(v[3] / 255).toFixed(2)})`;
+  return [
+    { band: "veryLikely", label: "Very likely", color: css(c.veryLikely) },
+    { band: "likely", label: "Likely", color: css(c.likely) },
+    { band: "faint", label: "Faint", color: css(c.faint) },
+  ];
+}
+
+export function spreadLayers(
+  forecast: SpreadForecast | null,
+  visible: boolean,
+  mapType: MapType,
+  theme: MapTheme,
+) {
+  const ready = visible && forecast?.status === "ready" ? forecast : null;
+  const colors = spreadColors(mapType);
+  const cells = (ready?.cells ?? []).filter((c) => spreadBand(c.score) !== null);
+  const corners = ready?.corners;
+  const outline = corners ? [[corners.nw, corners.ne, corners.se, corners.sw, corners.nw]] : [];
+  return [
+    new PolygonLayer<SpreadCell>({
+      id: "spread-cells",
+      data: cells,
+      pickable: false,
+      filled: true,
+      stroked: false,
+      getPolygon: (c) => c.ring,
+      getFillColor: (c) => colors[spreadBand(c.score) ?? "faint"],
+      updateTriggers: { getFillColor: mapType },
+    }),
+    new PathLayer<[number, number][]>({
+      id: "spread-window",
+      data: outline,
+      pickable: false,
+      getPath: (d: [number, number][]) => d,
+      getColor: rgba(theme.wind, 170),
+      widthUnits: "pixels",
+      getWidth: 1,
+      widthMinPixels: 1,
+      jointRounded: false,
+      capRounded: false,
+      getDashArray: [4, 4],
+      extensions: [dashExtension],
+    } as never),
+  ];
 }

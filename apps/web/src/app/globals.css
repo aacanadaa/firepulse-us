@@ -1849,3 +1849,139 @@ button {
   outline: 1px solid var(--accent);
   outline-offset: 4px;
 }
+
+/* ---------------------------- spread forecast ---------------------------- */
+
+.spread-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.spread-tag.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.spread-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.spread-summary p {
+  flex: 1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.spread-level {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.spread-level.moderate {
+  border-color: var(--ink-2);
+  color: var(--ink);
+}
+
+.spread-level.high {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.spread-weather {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.spread-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+}
+
+.spread-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.spread-window-swatch {
+  width: 14px;
+  height: 0;
+  border-top: 1px dashed var(--ink-2);
+}
+
+.spread-progress {
+  height: 1px;
+  background: var(--line);
+  position: relative;
+  overflow: hidden;
+}
+
+.spread-progress > span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: var(--ink);
+  animation: spreadProgress 1.4s ease-in-out infinite;
+}
+
+@keyframes spreadProgress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(360%); }
+}
+
+.spread-warning {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--ink);
+  border-radius: var(--r-sm);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spread-progress > span {
+    animation: none;
+  }
+}
