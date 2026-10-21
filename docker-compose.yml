@@ -29,8 +29,11 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+      args:
+        SPREAD_ASSETS_URL: ${SPREAD_ASSETS_URL:-}
     environment:
       PORT: 8790
+      SPREAD_USER_AGENT: ${SPREAD_USER_AGENT:-}
       DATA_MODE: simulation
       DATABASE_URL: postgres://firepulse:firepulse@db:5432/firepulse
       REDIS_URL: redis://redis:6379

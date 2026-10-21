@@ -43,7 +43,8 @@ export async function fetchAssets(baseUrl: string, paths: AssetPaths): Promise<v
     const parent = dirname(paths.staticDir);
     const tarball = join(parent, "static_conus.tar.gz");
     await download(`${base}/static_conus.tar.gz`, tarball);
-    await execFileAsync("tar", ["-xzf", tarball, "-C", parent]);
+    // Relative name + cwd: GNU tar reads "C:\..." as a remote host.
+    await execFileAsync("tar", ["-xzf", "static_conus.tar.gz"], { cwd: parent });
     await rm(tarball, { force: true });
     if (!existsSync(join(paths.staticDir, "index.json"))) {
       throw new Error(`static_conus.tar.gz did not unpack to ${paths.staticDir}`);

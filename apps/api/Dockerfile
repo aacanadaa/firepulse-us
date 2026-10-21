@@ -16,6 +16,12 @@ COPY packages ./packages
 COPY apps/api ./apps/api
 RUN pnpm --filter @firepulse/protocol build && pnpm --filter @firepulse/api build
 
+# Spread forecasts: fetch the ONNX model + CONUS static layers at build time.
+# SPREAD_ASSETS_URL must hold firesight-best.onnx, firesight-model.json and
+# static_conus.tar.gz. Without it the image builds and spread stays off.
+ARG SPREAD_ASSETS_URL=""
+RUN SPREAD_ASSETS_URL="$SPREAD_ASSETS_URL" node apps/api/dist/spread/assets.js
+
 FROM node:22-slim
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH

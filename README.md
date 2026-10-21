@@ -222,6 +222,74 @@ curl -X POST localhost:8790/api/v1/hooks/crowd \
 
 Set `INGEST_WEBHOOK_SECRET` to require `x-firepulse-signature: sha256=<hmac>`.
 
+### Next-day spread forecasts (experimental)
+
+Click any fire in the contiguous US and the detail panel shows where the
+**FireSight U-Net** expects it to be burning in about 24 hours. The map shades
+the predicted 1 km cells for the selected fire only, inside a dashed outline
+of the model's 64 × 64 km input window.
+
+How one forecast is made (`apps/api/src/spread/`):
+
+1. **Window.** A north-up 64 × 64 grid of 1 km cells centred on the incident's
+   VIIRS/MODIS detections from the last 24 h (the model pulls predictions toward
+   the centre, so it is always fire-centred).
+2. **Fire today.** Only VIIRS and MODIS hotspots, never GOES, CAD, crowd or
+   cameras. Official perimeters are filled in only when a thermal detection
+   confirms them.
+3. **Inputs.** Terrain, vegetation (NDVI) and population from 5° CONUS tiles;
+   one 16-point Open-Meteo request turned into GRIDMET-style daily values for the
+   fire's local day; ERC and PDSI from GRIDMET (THREDDS); Red Flag Warnings from
+   NWS. If Open-Meteo fails there is no forecast. FirePulse never predicts with
+   made-up weather. Missing ERC/PDSI are listed in the panel.
+4. **Model.** ONNX via `onnxruntime-node`; normalisation is inside the graph.
+   Test AUC-PR 0.357 (research baseline 0.284, "tomorrow = today" 0.115).
+5. **Output.** Scores are **not probabilities** (Dice loss), so the UI shows
+   bands only: faint ≥ 0.06, likely ≥ 0.12 (the threshold), very likely ≥ 0.5,
+   plus a one-line summary of the growth direction.
+
+Guards: estimates below `SPREAD_MIN_CONFIDENCE` (40) and unconfirmed
+thermal-only heat in places with ≥ 1500 people/km² ("likely an industrial heat
+source") get no forecast. Results are cached per incident, hour and set of
+detections (memory, plus Redis when `REDIS_URL` is set). At most 2 run at once
+with 20 queued, and each is capped at 30 s. `GET /api/v1/incidents/:id/spread`
+waits up to 25 s, then answers `202 {"status":"computing"}` and the client
+polls.
+
+**Assets.** The model and static layers are too large for git. They come from
+the [wildfire-spread-predictor](https://github.com/Rydenb/wildfire-spread-predictor)
+repo:
+
+```bash
+# in wildfire-spread-predictor
+python -m firesight.firepulse_export onnx           # models/firesight-best.onnx + firesight-model.json
+python ee/export_static_conus.py --project <gcp>     # static_conus/ (Earth Engine, ~60 MB)
+tar -czf static_conus.tar.gz static_conus
+
+# in FirePulse, for local development
+mkdir -p apps/api/assets/spread
+cp <predictor>/models/firesight-best.onnx <predictor>/models/firesight-model.json apps/api/assets/spread/
+cp -r <predictor>/static_conus apps/api/assets/spread/
+```
+
+Or upload `firesight-best.onnx`, `firesight-model.json` and
+`static_conus.tar.gz` to one URL (a GitHub release works) and set
+`SPREAD_ASSETS_URL`: the Dockerfile downloads them at build time
+(`docker build --build-arg SPREAD_ASSETS_URL=...`), and the API downloads any
+missing file at startup. Without the files, spread switches off with a single
+warning and the rest of FirePulse is unaffected. `/api/health` reports
+`spread.state`.
+
+**Hosting.** The API needs an always-on Node host (Render, Railway, Fly.io).
+Vercel's serverless functions can't hold the WebSocket hub, the in-memory
+fusion state, or a warm ONNX session, so deploy only `apps/web` there and point
+`NEXT_PUBLIC_API_URL` at the API. Set `SPREAD_USER_AGENT` to include a
+contact, as NWS asks.
+
+> **For learning only.** Never use this to decide whether to evacuate. Satellite
+> data can be hours old and the model doesn't know about firefighting. Follow
+> local officials and call 911 in an emergency.
+
 ---
 
 ## Project layout
@@ -236,9 +304,10 @@ firepulse/
 │   │   │   ├── simulation/   deterministic multi-tier generator + geography
 │   │   │   ├── store/        MemoryStore / PostgresStore / RedisCache
 │   │   │   ├── realtime/     hub, hotspot sequence log, metrics
+│   │   │   ├── spread/       next-day spread: ONNX model, static tiles, weather, summary
 │   │   │   ├── pipeline.ts   ingest → fuse → publish orchestration
 │   │   │   └── server.ts     HTTP API + WS + webhooks + metrics
-│   │   └── test/             31 tests: model, parsers, DBSCAN, merge, replay
+│   │   └── test/             76 tests: model, parsers, DBSCAN, merge, replay, spread
 │   └── web/                  Next.js App Router client
 │       ├── src/components/   AppHeader, MapCanvas, Sidebar, DetailPanel, Timeline
 │       ├── src/lib/          places.ts (4 basemaps), layers.ts, store.ts, select.ts
@@ -291,9 +360,10 @@ than its `lastHotspotSeq` inside its viewport. See
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| GET | `/api/health` | store, Redis, uptime, sessions |
+| GET | `/api/health` | store, Redis, uptime, sessions, spread state |
 | GET | `/api/v1/incidents?bbox=&at=&minConfidence=` | viewport FeatureCollection |
 | GET | `/api/v1/incidents/:id` | signals, neighbours, series |
+| GET | `/api/v1/incidents/:id/spread` | next-day spread forecast (202 while computing) |
 | GET | `/api/v1/hotspots?bbox=&from=&to=` | thermal window |
 | GET | `/api/v1/timeline?hours=24` | histogram + official draws |
 | GET | `/api/v1/stats` | rates, latency, fusion config |
@@ -310,7 +380,7 @@ than its `lastHotspotSeq` inside its viewport. See
 
 ```bash
 pnpm typecheck                  # protocol + API + web
-pnpm test                       # 31 tests
+pnpm test                       # 76 tests
 node scripts/shot.mjs           # headless screenshot + console/WebGL diagnostics
 node scripts/build-basemap.mjs  # PMTiles writer, validated by reading it back
 ```
@@ -329,6 +399,8 @@ re-opening the archive through `pmtiles` and decoding a sample MVT tile.
   fragment into multiple zones.
 - No read-API authentication in this build. Production needs keys, rate limits,
   CSP and an evacuation disclaimer.
+- Spread forecasts cover the contiguous US only, use satellite detections that
+  can be hours old, and know nothing about suppression. They are experimental.
 - **Not for evacuation decisions.** Algorithmic estimates are labelled as such;
   official perimeters are the authority.
 
