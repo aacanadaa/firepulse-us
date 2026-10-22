@@ -9,6 +9,7 @@ dist
 coverage
 screenshots
 *.tsbuildinfo
+Claude.md
 
 # Spread model + static layers (large; see README "Spread forecasts")
 apps/api/assets/
