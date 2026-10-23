@@ -5,6 +5,7 @@ import type { FeedStatus } from "@/lib/store";
 import { MAP_THEMES, MAP_TYPES, type MapType } from "@/lib/places";
 import type { LayerFlags } from "./MapCanvas";
 import { thermalSwatches } from "@/lib/layers";
+import type { Theme, ThemeMode } from "@/lib/theme";
 import { formatMinutes } from "@/lib/format";
 import { SourceHealthList } from "./SourceHealth";
 import { Icon } from "./ui";
@@ -26,9 +27,31 @@ interface Props {
   mergeCount: number;
   config: PublicConfig | null;
   now: number;
+  appearance: Theme;
+  themeMode: ThemeMode;
+  onTheme: (mode: ThemeMode) => void;
+  onKey: () => void;
   /** Sign-in / alerts button. */
   accountSlot?: React.ReactNode;
 }
+
+const THEME_NEXT: Record<ThemeMode, ThemeMode> = {
+  light: "dark",
+  dark: "system",
+  system: "light",
+};
+
+const THEME_TITLE: Record<ThemeMode, string> = {
+  light: "Light appearance — switch to dark",
+  dark: "Dark appearance — switch to system",
+  system: "Following the system — switch to light",
+};
+
+const THEME_ICON: Record<ThemeMode, "sun" | "moon" | "auto"> = {
+  light: "sun",
+  dark: "moon",
+  system: "auto",
+};
 
 const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
   { key: "official", label: "Official ground truth", note: "NIFC / CAL FIRE perimeters" },
@@ -74,6 +97,10 @@ export default function AppHeader({
   mergeCount,
   config,
   now,
+  appearance,
+  themeMode,
+  onTheme,
+  onKey,
   accountSlot,
 }: Props) {
   const theme = MAP_THEMES[mapType];
@@ -151,6 +178,27 @@ export default function AppHeader({
             </button>
           ))}
         </div>
+
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => onTheme(THEME_NEXT[themeMode])}
+          aria-pressed={appearance === "dark"}
+          title={THEME_TITLE[themeMode]}
+          aria-label={THEME_TITLE[themeMode]}
+        >
+          <Icon name={THEME_ICON[themeMode]} size={14} />
+        </button>
+
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={onKey}
+          title="Map key — what every mark and icon means"
+          aria-label="Open the map key"
+        >
+          <Icon name="key" size={14} />
+        </button>
 
         {accountSlot}
 

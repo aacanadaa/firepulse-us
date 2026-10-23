@@ -124,8 +124,14 @@ export function hotspotLayers(opts: {
   visible: boolean;
   mapType: MapType;
   theme: MapTheme;
+  /** MSAA on the point layer costs a full extra pass on weak GPUs. */
+  antialias?: boolean;
+  /** Stroking every detection doubles the draw work for little visual gain. */
+  stroked?: boolean;
 }) {
   const { items, now, visible, mapType, theme } = opts;
+  const antialias = opts.antialias ?? true;
+  const stroked = opts.stroked ?? true;
 
   return [
     new PickableHotspots({
@@ -133,19 +139,27 @@ export function hotspotLayers(opts: {
       data: items,
       pickable: true,
       filled: true,
-      stroked: true,
+      stroked,
       radiusUnits: "pixels",
       radiusMinPixels: 0.9,
       radiusMaxPixels: 3.2,
       lineWidthUnits: "pixels",
       getLineWidth: 0.4,
       opacity: 0.92,
-      antialiasing: true,
+      antialiasing: antialias,
       getPosition: (h: HotspotFeature) => h.geometry.coordinates as [number, number],
       getRadius: (h: HotspotFeature) => hotspotRadius(h.properties.frp),
       getFillColor: (h: HotspotFeature) => thermalColor(h, now, mapType),
       getLineColor: rgba(theme.markerStroke),
       pickItems: items,
+      // Colour only depends on the age bucket, which is stable for minutes;
+      // say so explicitly so deck.gl does not re-upload the attribute on every
+      // unrelated prop change.
+      updateTriggers: {
+        getFillColor: [Math.floor(now / 300_000), mapType],
+        getLineColor: [theme.markerStroke],
+        getRadius: [mapType],
+      },
       visible,
     }),
   ] as never[];

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
   title: "FirePulse US — National fire picture",
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#f7f7f5",
-  colorScheme: "light",
+  // Both appearances ship; native controls and scrollbars should follow.
+  colorScheme: "light dark",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -23,7 +25,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light" suppressHydrationWarning>
+      <head>
+        {/* Applies the stored appearance before first paint, so dark mode never flashes white. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>{children}</body>
     </html>
   );

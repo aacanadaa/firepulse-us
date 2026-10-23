@@ -75,11 +75,20 @@ export class LiveStore {
   serverSkewMs = 0;
   seq = 0;
   version = 0;
+  /**
+   * Increments only when the fire geometry changed. Map layers and the feed
+   * list depend on this, not on `version`: a stats-only frame (ingest rate,
+   * feed health) must never rebuild 6 000 deck.gl points.
+   */
+  dataVersion = 0;
+  /** Increments only for feed-health / counter frames. */
+  statsVersion = 0;
   lastMessageAt = 0;
   /** seq of the last applied hotspot frame, for debugging/diagnostics */
   hotspotSeq = 0;
 
   private listeners = new Set<() => void>();
+  private notifyScheduled = false;
 
   subscribe = (fn: () => void): (() => void) => {
     this.listeners.add(fn);
@@ -87,11 +96,31 @@ export class LiveStore {
   };
 
   getVersion = (): number => this.version;
+  getDataVersion = (): number => this.dataVersion;
+  getStatsVersion = (): number => this.statsVersion;
 
-  private bump(): void {
+  /**
+   * Coalesce notifications into one per animation frame. The API can send a
+   * delta and a stats frame back to back; without this React renders twice for
+   * data that lands in the same frame.
+   */
+  private notify(): void {
+    if (this.notifyScheduled) return;
+    this.notifyScheduled = true;
+    const flush = () => {
+      this.notifyScheduled = false;
+      for (const fn of this.listeners) fn();
+    };
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(flush);
+    else setTimeout(flush, 16);
+  }
+
+  private bump(kind: "data" | "stats" | "config" = "data"): void {
     this.version++;
     this.lastMessageAt = Date.now();
-    for (const fn of this.listeners) fn();
+    if (kind === "data" || kind === "config") this.dataVersion++;
+    if (kind === "stats" || kind === "config") this.statsVersion++;
+    this.notify();
   }
 
   /** Server-corrected wall clock. */
@@ -105,7 +134,7 @@ export class LiveStore {
       this.config = msg.config;
       this.stats = msg.stats;
       this.serverSkewMs = Date.parse(msg.serverTime) - Date.now();
-      this.bump();
+      this.bump("config");
       return;
     }
 
@@ -140,7 +169,7 @@ export class LiveStore {
     if (msg.type === "stats") {
       this.stats = msg.stats;
       this.serverSkewMs = Date.parse(msg.serverTime) - Date.now();
-      this.bump();
+      this.bump("stats");
     }
   }
 

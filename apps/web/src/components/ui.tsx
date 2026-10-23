@@ -1,7 +1,11 @@
 import type { SourceId } from "@firepulse/protocol";
 import { sourceMeta } from "@/lib/format";
 
-type IconName =
+export type IconName =
+  | "sun"
+  | "moon"
+  | "auto"
+  | "key"
   | "flame"
   | "wind"
   | "layers"
@@ -23,6 +27,10 @@ type IconName =
   | "search";
 
 const PATHS: Record<IconName, string> = {
+  sun: "M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4",
+  moon: "M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z",
+  auto: "M4 5.5h16v10H4zM9 19.5h6M12 15.5v4",
+  key: "M15.5 3.5a5 5 0 0 0-4.8 6.4L3.5 17.1V20.5h3.4l1.3-1.3v-2h2v-2h2l1.3-1.3A5 5 0 1 0 15.5 3.5Z",
   pin: "M12 21s-6.5-6.2-6.5-11.2a6.5 6.5 0 1 1 13 0C18.5 14.8 12 21 12 21ZM12 12.3a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z",
   search: "M10.8 17.6a6.8 6.8 0 1 0 0-13.6 6.8 6.8 0 0 0 0 13.6ZM20 20l-4.4-4.4",
   flame:

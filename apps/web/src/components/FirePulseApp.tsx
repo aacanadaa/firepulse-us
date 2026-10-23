@@ -8,6 +8,8 @@ import { selectHotspots, selectIncidents, type FeedTab, type KindFilter } from "
 import type { MapType } from "@/lib/places";
 import { useNearby, usePlaces, type WatchedPlace } from "@/lib/myplaces";
 import { registerServiceWorker, useAccount, usePush } from "@/lib/account";
+import { perfFromQuery } from "@/lib/perf";
+import { useTheme } from "@/lib/theme";
 import type { LayerFlags } from "./MapCanvas";
 import AppHeader from "./AppHeader";
 import Sidebar, { type SidebarMode } from "./Sidebar";
@@ -16,11 +18,13 @@ import AccountPanel from "./AccountPanel";
 import ReportSmoke from "./ReportSmoke";
 import DetailPanel from "./DetailPanel";
 import Timeline from "./Timeline";
+import Legend from "./Legend";
 import { Icon } from "./ui";
 
 const MapCanvas = dynamic(() => import("./MapCanvas"), {
   ssr: false,
-  loading: () => <div style={{ position: "absolute", inset: 0, background: "#e9e5dc" }} />,
+  // A neutral canvas, not the light map paper: this must not flash white in dark mode.
+  loading: () => <div style={{ position: "absolute", inset: 0, background: "var(--canvas)" }} />,
 });
 
 const DAY = 24 * 3_600_000;
@@ -36,7 +40,21 @@ function isMapType(value: string | null): value is MapType {
 export default function FirePulseApp() {
   const feed = useLiveFeed();
   const store = feed.store;
-  const version = useSyncExternalStore(store.subscribe, store.getVersion, () => 0);
+  // Re-render on any store change (counters, feed health, geometry)…
+  useSyncExternalStore(store.subscribe, store.getVersion, () => 0);
+  // …but only rebuild derived geometry when the geometry itself changed. A
+  // stats-only frame must not invalidate the map data and every deck.gl layer.
+  const dataVersion = store.getDataVersion();
+
+  // Device budget: decides the clock cadence and is handed to the map.
+  const profile = useMemo(
+    () => perfFromQuery(typeof window === "undefined" ? "" : window.location.search),
+    [],
+  );
+  const appearance = useTheme();
+  const [legendOpen, setLegendOpen] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("key"),
+  );
 
   const [clock, setClock] = useState(() => Date.now());
   const [cursor, setCursor] = useState<number | null>(null);
@@ -106,14 +124,36 @@ export default function FirePulseApp() {
   }
 
   /* ------------------------------ clocks ------------------------------- */
+  // Ages are shown in minutes, so a 1 s clock bought nothing but a full app
+  // re-render every second — including every card in the feed.
   useEffect(() => {
-    const id = window.setInterval(() => setClock(Date.now()), 1000);
+    const id = window.setInterval(() => setClock(Date.now()), profile.clockMs);
     return () => window.clearInterval(id);
-  }, []);
+  }, [profile.clockMs]);
 
   useEffect(() => {
     window.localStorage.setItem(MAP_KEY, mapType);
   }, [mapType]);
+
+  // Keep the basemap and the UI in the same register: switching to dark turns
+  // the paper basemap into the carbon one (and back). An explicit pick of Topo
+  // or Sat is left alone.
+  const lastTheme = useRef(appearance.theme);
+  useEffect(() => {
+    const previous = lastTheme.current;
+    lastTheme.current = appearance.theme;
+    if (previous === appearance.theme) return;
+    setMapType((current) => {
+      if (appearance.theme === "dark" && current === "atlas") return "ink";
+      if (appearance.theme === "light" && current === "ink") return "atlas";
+      return current;
+    });
+  }, [appearance.theme]);
+
+  // Exposed for the stylesheet and for `?perf=` diagnostics.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-perf", profile.tier);
+  }, [profile.tier]);
 
   useEffect(() => {
     try {
@@ -199,13 +239,13 @@ export default function FirePulseApp() {
   const incidents = useMemo(
     () => selectIncidents(store, { cursor, minConfidence, kind, tab }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, cursor, minConfidence, kind, tab],
+    [dataVersion, cursor, minConfidence, kind, tab],
   );
 
   const mapIncidents = useMemo(
     () => selectIncidents(store, { cursor, minConfidence: 0, kind: "all", tab: "all", includeUnconfirmed: true }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, cursor],
+    [dataVersion, cursor],
   );
 
   const hazards = useMemo(
@@ -215,13 +255,13 @@ export default function FirePulseApp() {
         return end >= Date.now();
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version],
+    [dataVersion],
   );
 
   const hotspots = useMemo(
     () => selectHotspots(store, cursor),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, cursor],
+    [dataVersion, cursor],
   );
 
   const counts = useMemo(() => {
@@ -335,7 +375,7 @@ export default function FirePulseApp() {
       setPendingSelect(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version, pendingSelect]);
+  }, [dataVersion, pendingSelect]);
 
   const handleAddPlace = useCallback(
     (place: { name: string; lat: number; lon: number }) => {
@@ -449,6 +489,10 @@ export default function FirePulseApp() {
         mergeCount={merges.count}
         config={store.config}
         now={now}
+        appearance={appearance.theme}
+        themeMode={appearance.mode}
+        onTheme={appearance.setMode}
+        onKey={() => setLegendOpen(true)}
         accountSlot={
           <button
             type="button"
@@ -674,6 +718,8 @@ export default function FirePulseApp() {
           }}
         />
       ) : null}
+
+      <Legend open={legendOpen} onClose={() => setLegendOpen(false)} mapType={mapType} />
 
       <style>{`@keyframes loadingBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(360%); } }`}</style>
     </div>

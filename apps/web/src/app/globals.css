@@ -35,6 +35,8 @@
   --line-strong: #d4d4d4;
   --line-soft: #efefec;
   --accent: #ff4f00;
+  /* Text that sits on an --ink background: white on carbon, carbon on chalk. */
+  --on-ink: #ffffff;
   --accent-wash: #fff8f3;
   --forest: #1b4332;
   --warn: #b45309;
@@ -184,13 +186,14 @@ button {
 .btn-primary {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .btn-primary:hover {
-  background: #000000;
-  border-color: #000000;
-  color: #ffffff;
+  background: var(--ink);
+  border-color: var(--ink);
+  filter: brightness(0.92);
+  color: var(--on-ink);
 }
 
 .btn-ghost {
@@ -266,12 +269,12 @@ button {
 
 .segment.active {
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .segment.active:hover {
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 /* --------------------------------- chips --------------------------------- */
@@ -304,12 +307,12 @@ button {
 .chip.active {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .chip.active:hover {
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 /* -------------------------------- app shell ------------------------------ */
@@ -1062,7 +1065,7 @@ button {
   border-radius: var(--r-md);
   border: 1px solid var(--ink);
   background: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
   display: grid;
   place-items: center;
   transition: background-color 150ms ease-out;
@@ -1234,7 +1237,7 @@ button {
 .live-btn.on {
   background: var(--ink);
   border-color: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 
 .live-btn .dot {
@@ -1392,7 +1395,7 @@ button {
 .check-box.on {
   background: var(--ink);
   border-color: var(--ink);
-  color: #fff;
+  color: var(--on-ink);
 }
 
 .legend-row {
@@ -1911,7 +1914,7 @@ button {
 .spread-level.high {
   border-color: var(--ink);
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .spread-weather {
@@ -2711,4 +2714,162 @@ button {
 
 .legal-links a {
   color: var(--muted);
+}
+
+/* ==========================================================================
+   Dark appearance
+   Carbon instead of alabaster: the same editorial system, inverted. Only the
+   palette moves — every component already reads these variables.
+   ========================================================================== */
+
+[data-theme="dark"] {
+  --canvas: #0b0b0b;
+  --surface: #121212;
+  --surface-muted: #171717;
+  --surface-hover: #1d1d1d;
+  --ink: #f2f0eb;
+  --ink-2: #cec9c0;
+  --muted: #9a958c;
+  --faint: #6f6a62;
+  --line: #262626;
+  --line-strong: #363636;
+  --line-soft: #1c1c1c;
+  --accent: #ff6a2b;
+  --on-ink: #0b0b0b;
+  --accent-wash: #201510;
+  --forest: #74c69d;
+  --warn: #e8a15c;
+  --danger: #f87171;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] ::selection {
+  background: #3d1f10;
+  color: var(--ink);
+}
+
+[data-theme="dark"] :focus-visible {
+  outline-color: var(--ink);
+}
+
+/* Panels that carry their own translucent fill rather than a variable. */
+[data-theme="dark"] .replay-banner {
+  background: #1c1410;
+  border-color: #3a2a1e;
+}
+
+[data-theme="dark"] .speed.active {
+  background: #2a2a28;
+  color: var(--ink);
+}
+
+[data-theme="dark"] .np-alert-act {
+  background: #241313;
+}
+
+[data-theme="dark"] .btn-primary {
+  color: #0b0b0b;
+}
+
+[data-theme="dark"] .map-caption,
+[data-theme="dark"] .map-hint {
+  background: rgba(12, 12, 12, 0.9);
+  border-color: #2a2a2a;
+  color: #a3a3a3;
+}
+
+[data-theme="dark"] .map-caption .coords {
+  color: #ededed;
+}
+
+[data-theme="dark"] .map-caption .sep {
+  background: #2a2a2a;
+}
+
+[data-theme="dark"] .maplibregl-ctrl-attrib {
+  background: rgba(12, 12, 12, 0.9) !important;
+  border-color: #2a2a2a;
+  color: #a3a3a3 !important;
+}
+
+[data-theme="dark"] .maplibregl-ctrl-attrib a {
+  color: #a3a3a3 !important;
+}
+
+[data-theme="dark"] .acct-scrim {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* ==========================================================================
+   Map key panel
+   ========================================================================== */
+
+.key-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.key-row b {
+  display: block;
+  font-weight: 550;
+  color: var(--ink);
+}
+
+.key-row em {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.key-swatch {
+  flex: none;
+  width: 22px;
+  height: 12px;
+  margin-top: 2px;
+}
+
+.key-box {
+  border-radius: 2px;
+}
+
+.key-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.key-dot {
+  display: inline-block;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: transparent;
+}
+
+.key-icon {
+  flex: none;
+  width: 22px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* ==========================================================================
+   Small screens: trim the heaviest paint work
+   ========================================================================== */
+
+@media (max-width: 900px) {
+  /* Long shadows and gradients over the map are the first things to go on a
+     phone GPU; they buy nothing at this size. */
+  .popover {
+    box-shadow: none;
+  }
 }

@@ -4,12 +4,14 @@ import { useEffect, useRef } from "react";
 import type maplibregl from "maplibre-gl";
 import type { WindField } from "@firepulse/protocol";
 import type { MapTheme } from "@/lib/places";
+import type { PerfProfile } from "@/lib/perf";
 
 interface Props {
   map: maplibregl.Map | null;
   field: WindField | null;
   enabled: boolean;
   theme: MapTheme;
+  profile: PerfProfile;
 }
 
 function sampleField(
@@ -46,7 +48,7 @@ function sampleField(
  * velocity — not to become a second colour system. Short graphite strokes,
  * alpha by speed, no glow.
  */
-export default function WindParticles({ map, field, enabled, theme }: Props) {
+export default function WindParticles({ map, field, enabled, theme, profile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const fieldRef = useRef(field);
@@ -60,12 +62,14 @@ export default function WindParticles({ map, field, enabled, theme }: Props) {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    let dpr = Math.min(2, window.devicePixelRatio || 1);
+    // The wind layer is a full-screen compositing canvas; at DPR 3 it costs as
+    // much as the rest of the map together on a phone.
+    let dpr = Math.min(2, profile.dpr || 1);
     let running = true;
 
     const resize = () => {
       const el = map.getContainer();
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      dpr = Math.min(2, profile.dpr || 1);
       canvas.width = Math.max(1, Math.floor(el.clientWidth * dpr));
       canvas.height = Math.max(1, Math.floor(el.clientHeight * dpr));
       canvas.style.width = `${el.clientWidth}px`;
@@ -76,7 +80,8 @@ export default function WindParticles({ map, field, enabled, theme }: Props) {
 
     const maxParticles = () => {
       const area = canvas.width * canvas.height;
-      return Math.max(220, Math.min(950, Math.round(area / 6800)));
+      const ceiling = profile.windParticles;
+      return Math.max(60, Math.min(ceiling, Math.round(area / 6800)));
     };
 
     let count = maxParticles();
@@ -109,15 +114,27 @@ export default function WindParticles({ map, field, enabled, theme }: Props) {
 
     let last = performance.now();
     let frame = 0;
+    let carry = 0;
 
     const tick = (now: number) => {
       if (!running) return;
       frameRef.current = requestAnimationFrame(tick);
       if (!enabled || !fieldRef.current) return;
+      // Nothing to animate behind a background tab.
+      if (document.hidden) {
+        last = now;
+        return;
+      }
 
-      const dt = Math.min(64, now - last);
+      carry += Math.min(64, now - last);
       last = now;
       frame++;
+
+      // Advection reads better at a steady rate than at whatever the GPU can
+      // manage: on weak hardware, draw every Nth frame with the accumulated dt.
+      if (profile.windFrameSkip > 1 && frame % profile.windFrameSkip !== 0) return;
+      const dt = Math.min(96, carry);
+      carry = 0;
 
       const target = maxParticles();
       if (Math.abs(target - count) > count * 0.35) {
@@ -217,7 +234,7 @@ export default function WindParticles({ map, field, enabled, theme }: Props) {
       map.off("resize", resize);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
-  }, [map, enabled]);
+  }, [map, enabled, profile]);
 
   useEffect(() => {
     if (!enabled) {

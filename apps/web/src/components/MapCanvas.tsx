@@ -39,6 +39,7 @@ import {
   spreadLayers,
 } from "@/lib/layers";
 import { formatAcres, formatAge, formatMw, sourceMeta } from "@/lib/format";
+import { perfFromQuery } from "@/lib/perf";
 import WindParticles from "./WindParticles";
 
 export interface LayerFlags {
@@ -72,6 +73,8 @@ interface Props {
 }
 
 const CONUS_CENTER: [number, number] = [-99.2, 38.3];
+/** Marks where the animated outline goes inside the static layer array. */
+const PULSE_SLOT = Symbol("firepulse.pulse-slot");
 const CONUS_ZOOM = 4.0;
 
 async function makeHatch(color: string): Promise<ImageBitmap | null> {
@@ -132,6 +135,11 @@ export default function MapCanvas({
 
   const theme: MapTheme = MAP_THEMES[mapType];
   const ink = mapType === "ink" || mapType === "sat";
+  // One budget decision per session; `?perf=low` forces it for testing.
+  const profile = useMemo(
+    () => perfFromQuery(typeof window === "undefined" ? "" : window.location.search),
+    [],
+  );
 
   const interactionRef = useRef({ onSelect, onViewport });
   interactionRef.current = { onSelect, onViewport };
@@ -142,20 +150,30 @@ export default function MapCanvas({
   const layersRef = useRef(layers);
   layersRef.current = layers;
   const officialRef = useRef<IncidentFeature[]>([]);
+  /** Latest computed layers, so a freshly added overlay is never left empty. */
+  const deckLayersRef = useRef<unknown[]>([]);
   const hatchRef = useRef<Record<string, ImageBitmap | null>>({});
   const installingRef = useRef(false);
+  const hoverRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
   const installedThemeRef = useRef<MapType | null>(null);
 
   /* ----------------------------- subtle pulse -------------------------- */
+  // This used to tick at ~8 Hz. Because `pulse` was a dependency of the whole
+  // layer array, every tick rebuilt all ~20 deck.gl layers. It is now gated by
+  // the device budget, quantised, and skipped while the tab is hidden.
   useEffect(() => {
-    if (!layers.estimated) return;
+    if (!layers.estimated || !profile.pulse) {
+      setPulse(0.75);
+      return;
+    }
     const started = performance.now();
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       const t = performance.now() - started;
-      setPulse(Math.round((0.5 + 0.5 * Math.sin(t / 900)) * 100) / 100);
-    }, 120);
+      setPulse(Math.round((0.5 + 0.5 * Math.sin(t / 1100)) * 10) / 10);
+    }, 400);
     return () => window.clearInterval(timer);
-  }, [layers.estimated]);
+  }, [layers.estimated, profile.pulse]);
 
   /* ----------------------------- official layers ------------------------ */
   const applyOfficialVisibility = useCallback((m: maplibregl.Map) => {
@@ -290,7 +308,13 @@ export default function MapCanvas({
         dragRotate: false,
         pitchWithRotate: false,
         attributionControl: false,
-        fadeDuration: 100,
+        // Cross-fading tiles is a per-tile animation; skip it on weak GPUs.
+        fadeDuration: profile.fadeDuration,
+        // Keep the tile cache bounded on memory-constrained phones.
+        maxTileCacheSize: profile.maxTileCacheSize,
+        renderWorldCopies: false,
+        collectResourceTiming: false,
+        refreshExpiredTiles: false,
       });
       mapRef.current = map;
 
@@ -345,7 +369,7 @@ export default function MapCanvas({
       let lastMove = 0;
       map.on("mousemove", (e) => {
         const now = performance.now();
-        if (now - lastMove < 110) return;
+        if (now - lastMove < profile.coordThrottleMs) return;
         lastMove = now;
         setCoords([e.lngLat.lng, e.lngLat.lat]);
       });
@@ -367,7 +391,7 @@ export default function MapCanvas({
       cancelled = true;
       cleanup?.();
     };
-  }, [installOfficial]);
+  }, [installOfficial, profile]);
 
   /* ------------------------------ style swap ---------------------------- */
   useEffect(() => {
@@ -418,8 +442,11 @@ export default function MapCanvas({
     [incidents, selectedId],
   );
 
-  const deckLayers = useMemo(() => {
-    const now = cursor ?? Date.now();
+  // Sentinel that keeps the pulsing outline's slot in the static array.
+  const baseLayers = useMemo(() => {
+    // Quantised to the same 5-minute bucket the thermal ramp uses, so a rebuild
+    // in the same bucket paints identical colours.
+    const now = cursor ?? Math.floor(Date.now() / 300_000) * 300_000;
     return [
       // Alert areas are context: under the fire data.
       ...hazardLayers(hazards, layers.alerts, mapType),
@@ -427,9 +454,19 @@ export default function MapCanvas({
       ...spreadLayers(spread, layers.spread, mapType, theme),
       officialPickLayer(officialFeatures, layers.official),
       selectedOutlineLayer(selected, theme),
-      estimatedZoneLayer(layers.estimated ? estimated : [], layers.estimated, theme),
-      estimatedCasingLayer(layers.estimated ? estimated : [], layers.estimated, theme),
-      estimatedOutlineLayer(layers.estimated ? estimated : [], pulse, layers.estimated, theme),
+      // Two polygon layers over the same rings means two triangulation passes;
+      // on a tight budget the outline alone still reads clearly.
+      estimatedZoneLayer(
+        layers.estimated && profile.estimatedFill ? estimated : [],
+        layers.estimated,
+        theme,
+      ),
+      // The pale casing is a second full polygon path pass; skipped when the
+      // device budget is tight.
+      ...(profile.estimatedCasing
+        ? [estimatedCasingLayer(layers.estimated ? estimated : [], layers.estimated, theme)]
+        : []),
+      PULSE_SLOT,
       h3Layer(hexes, layers.hex, theme),
       markerLayer(officialFeatures, layers.official, theme, "official"),
       markerLayer(estimated, layers.estimated, theme, "estimated"),
@@ -439,6 +476,8 @@ export default function MapCanvas({
         visible: layers.thermal,
         mapType,
         theme,
+        antialias: profile.antialias,
+        stroked: profile.hotspotStrokes,
       }),
       new TextLayer({
         id: "state-labels",
@@ -489,7 +528,7 @@ export default function MapCanvas({
         theme,
       }),
       ...placeLayers(places, theme),
-    ] as never[];
+    ] as unknown[];
   }, [
     officialFeatures,
     estimated,
@@ -497,7 +536,6 @@ export default function MapCanvas({
     selected,
     selectedId,
     zoom,
-    pulse,
     cursor,
     hotspots,
     incidents,
@@ -513,13 +551,37 @@ export default function MapCanvas({
     places,
     mapType,
     theme,
+    profile.estimatedCasing,
+    profile.estimatedFill,
+    profile.antialias,
+    profile.hotspotStrokes,
   ]);
+
+  /**
+   * Only the pulsing outline is rebuilt per pulse tick. Every other layer keeps
+   * its identity, so deck.gl sees unchanged props and skips attribute uploads —
+   * the difference between a static map at 60 fps and a full rebuild at 8 fps.
+   */
+  const deckLayers = useMemo(() => {
+    const out = baseLayers.slice();
+    const slot = out.indexOf(PULSE_SLOT);
+    if (slot >= 0) {
+      if (layers.estimated) out[slot] = estimatedOutlineLayer(estimated, pulse, layers.estimated, theme);
+      else out.splice(slot, 1);
+    } else if (layers.estimated) {
+      out.push(estimatedOutlineLayer(estimated, pulse, layers.estimated, theme));
+    }
+    return out.filter((layer) => layer !== PULSE_SLOT) as never[];
+  }, [baseLayers, estimated, pulse, layers.estimated, theme]);
 
   /* -------------------------------- overlay ----------------------------- */
   useEffect(() => {
     if (!map) return;
     const overlay = new MapboxOverlay({
       interleaved: false,
+      // deck.gl otherwise renders at the full DPR (3x on many phones), which is
+      // ~9x the fragment work for a map that is mostly flat dots and lines.
+      useDevicePixels: profile.dpr,
       layers: [],
       onClick: (info) => {
         const obj = info.object as
@@ -533,22 +595,33 @@ export default function MapCanvas({
       },
       onHover: (info) => {
         if (!info.object || info.x == null || info.y == null) {
+          if (hoverRef.current.key !== "") hoverRef.current = { key: "", at: 0 };
           setHover(null);
           return;
         }
         const obj = info.object as IncidentFeature | HotspotFeature;
-        if (obj.type === "Feature" && "properties" in obj) {
-          if ("kind" in obj.properties) {
-            setHover({ x: info.x, y: info.y, incident: obj as IncidentFeature });
-          } else {
-            setHover({ x: info.x, y: info.y, hotspot: obj as HotspotFeature });
-          }
+        if (!(obj.type === "Feature" && "properties" in obj)) return;
+        const named = obj.properties as { name?: string };
+        const id = String(obj.id ?? named.name ?? "");
+        // Picking fires at pointer rate; re-rendering the tooltip that often is
+        // pure jank on a phone. Same feature within 90 ms is a no-op.
+        const now = performance.now();
+        if (id === hoverRef.current.key && now - hoverRef.current.at < 90) return;
+        hoverRef.current = { key: id, at: now };
+        if ("kind" in obj.properties) {
+          setHover({ x: info.x, y: info.y, incident: obj as IncidentFeature });
+        } else {
+          setHover({ x: info.x, y: info.y, hotspot: obj as HotspotFeature });
         }
       },
       getCursor: ({ isHovering, isDragging }) =>
         isDragging ? "grabbing" : isHovering ? "pointer" : "grab",
     });
     map.addControl(overlay as never);
+    // The layers effect below only runs when the array changes. If the map
+    // finished loading after the data arrived, that effect has already run —
+    // without this the overlay would sit empty until the next update.
+    overlay.setProps({ layers: deckLayersRef.current as never });
     overlayRef.current = overlay;
     if (new URLSearchParams(window.location.search).has("debug")) {
       (window as unknown as { __fpDeck?: unknown }).__fpDeck = overlay;
@@ -557,7 +630,9 @@ export default function MapCanvas({
       overlay.finalize();
       overlayRef.current = null;
     };
-  }, [map]);
+  }, [map, profile.dpr]);
+
+  deckLayersRef.current = deckLayers;
 
   useEffect(() => {
     overlayRef.current?.setProps({ layers: deckLayers });
@@ -603,7 +678,7 @@ export default function MapCanvas({
   return (
     <div className="map-shell">
       <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
-      <WindParticles map={map} field={wind} enabled={layers.wind} theme={theme} />
+      <WindParticles map={map} field={wind} enabled={layers.wind} theme={theme} profile={profile} />
       <div className={`map-caption ${ink ? "theme-ink" : ""}`}>
         <span>{mapName}</span>
         <span className="sep" />
