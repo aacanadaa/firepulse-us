@@ -356,6 +356,7 @@ export class Pipeline {
       });
       if (warnings.length > 0) this.deps.log.warn({ adapter: adapter.id, warnings }, "hazard poll incomplete");
       const { upserts, removes } = this.deps.hazards.replace(alerts);
+      this.deps.hub.publishHazards(upserts, removes);
       if (upserts.length > 0 || removes.length > 0) {
         this.deps.log.info({ active: alerts.length, new: upserts.length, ended: removes.length }, "hazard alerts updated");
       }

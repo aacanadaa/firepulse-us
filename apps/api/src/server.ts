@@ -10,6 +10,8 @@ import type { FusionEngine } from "./fusion/engine.js";
 import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
 import type { HazardLayer } from "./realtime/hazards.js";
+import { Geocoder } from "./geocode.js";
+import { NEARBY_MAX_RADIUS_KM, nearbySummary } from "./nearby.js";
 import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
 import type { FireSimulation } from "./simulation/generator.js";
@@ -39,6 +41,22 @@ function parseBBox(raw: unknown): [number, number, number, number] | null {
   if (parts.length !== 4 || parts.some((n) => !Number.isFinite(n))) return null;
   const [a, b, c, d] = parts as [number, number, number, number];
   return [Math.min(a, c), Math.min(b, d), Math.max(a, c), Math.max(b, d)];
+}
+
+/** Requests allowed per client per minute, for routes that call third parties. */
+function perMinuteLimiter(limit: number): (key: string, now?: number) => boolean {
+  const hits = new Map<string, number[]>();
+  return (key, now = Date.now()) => {
+    const recent = (hits.get(key) ?? []).filter((t) => t > now - 60_000);
+    if (recent.length >= limit) {
+      hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    hits.set(key, recent);
+    if (hits.size > 10_000) hits.clear();
+    return true;
+  };
 }
 
 function bucket(count: number): string {
@@ -84,6 +102,9 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       "/api/v1/stats",
       "/api/v1/merges",
       "/api/v1/wind",
+      "/api/v1/alerts",
+      "/api/v1/nearby",
+      "/api/v1/geocode",
       "/ws",
     ],
   }));
@@ -272,6 +293,30 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       maxLeadTimeMinutes: lead.length > 0 ? lead[lead.length - 1] : null,
       merges,
     };
+  });
+
+  app.get<{ Querystring: { lat?: string; lon?: string; radiusKm?: string } }>("/api/v1/nearby", async (req, reply) => {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return reply.code(400).send({ error: "lat and lon are required" });
+    }
+    const radiusKm = Math.min(NEARBY_MAX_RADIUS_KM, Math.max(1, Number(req.query.radiusKm ?? 25) || 25));
+    return nearbySummary({ lat, lon }, radiusKm, engine.allIncidents(), hazards);
+  });
+
+  const geocoder = new Geocoder({ userAgent: config.userAgent });
+  const geocodeAllowed = perMinuteLimiter(30);
+  app.get<{ Querystring: { q?: string } }>("/api/v1/geocode", async (req, reply) => {
+    const q = String(req.query.q ?? "");
+    if (q.trim().length < 3) return { results: [] };
+    if (!geocodeAllowed(req.ip)) return reply.code(429).send({ error: "too many searches, try again in a minute" });
+    try {
+      return { results: await geocoder.search(q) };
+    } catch (err) {
+      log.warn({ err }, "geocode failed");
+      return reply.code(502).send({ error: "place search is unavailable right now" });
+    }
   });
 
   app.get<{ Querystring: { bbox?: string } }>("/api/v1/alerts", async (req, reply) => {

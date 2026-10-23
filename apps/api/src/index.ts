@@ -106,6 +106,7 @@ async function main(): Promise<void> {
     log,
     cache,
     health,
+    hazards,
   });
 
   const pipeline = new Pipeline({

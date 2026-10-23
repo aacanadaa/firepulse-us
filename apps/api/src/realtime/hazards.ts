@@ -1,9 +1,14 @@
-import { HAZARD_EVENTS, type HazardAlertFeature } from "@firepulse/protocol";
+import { HAZARD_EVENTS, pointInRing, type HazardAlertFeature, type LngLat } from "@firepulse/protocol";
 
 /** When an alert stops applying: its hazard end, else the message expiry. */
 export function alertEndsAt(alert: HazardAlertFeature): number {
   const p = alert.properties;
   return Math.max(Date.parse(p.expires) || 0, p.ends ? Date.parse(p.ends) || 0 : 0);
+}
+
+export function hazardIntersectsBBox(alert: HazardAlertFeature, bbox: [number, number, number, number]): boolean {
+  const b = bboxOf(alert);
+  return !(b[2] < bbox[0] || b[0] > bbox[2] || b[3] < bbox[1] || b[1] > bbox[3]);
 }
 
 function bboxOf(alert: HazardAlertFeature): [number, number, number, number] {
@@ -50,6 +55,15 @@ export class HazardLayer {
     const removes = [...this.alerts.keys()].filter((id) => !ids.has(id));
     for (const id of removes) this.alerts.delete(id);
     return { upserts, removes };
+  }
+
+  /** Active alerts whose area contains a point, most urgent first. */
+  covering(point: LngLat, now = Date.now()): HazardAlertFeature[] {
+    const box: [number, number, number, number] = [point.lon, point.lat, point.lon, point.lat];
+    return this.active(box, now).filter((a) => {
+      const polygons = a.geometry.type === "Polygon" ? [a.geometry.coordinates] : a.geometry.coordinates;
+      return polygons.some((polygon) => polygon[0] !== undefined && pointInRing(point, polygon[0]));
+    });
   }
 
   /** Active alerts intersecting a bbox, most urgent event first. */

@@ -6,6 +6,7 @@ import {
   type PolygonGeometry,
   type RawSignal,
   type Ring,
+  simplifyRing,
 } from "@firepulse/protocol";
 import type { HazardAdapter } from "./types.js";
 
@@ -19,6 +20,9 @@ const NWS_HOST = "api.weather.gov";
 const NWS_ALERTS_URL =
   process.env.NWS_URL ??
   `https://${NWS_HOST}/alerts/active?status=actual&event=${encodeURIComponent(HAZARD_EVENTS.join(","))}`;
+
+/** ~100 m: zone outlines are drawn for counties, not property lines. */
+const ZONE_SIMPLIFY_DEG = 0.001;
 
 /** Events that describe fire weather and so count as fusion context. */
 const FIRE_WEATHER: ReadonlySet<HazardEvent> = new Set(["Red Flag Warning", "Extreme Fire Danger"]);
@@ -111,7 +115,8 @@ export function parseNwsHazards(
       const parts = p.affectedZones
         .map((z) => (typeof z === "string" ? zones.get(z) : undefined))
         .filter((g): g is AlertGeometry => Boolean(g))
-        .flatMap(polygonsOf);
+        .flatMap(polygonsOf)
+        .map((polygon) => polygon.map((ring) => simplifyRing(ring, ZONE_SIMPLIFY_DEG)));
       if (parts.length > 0) geometry = { type: "MultiPolygon", coordinates: parts };
     }
     if (!geometry) continue;

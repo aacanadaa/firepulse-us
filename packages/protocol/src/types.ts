@@ -305,6 +305,52 @@ export interface HazardAlertFeature {
 }
 
 /* ------------------------------------------------------------------ */
+/* Near a place                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface NearbyFire {
+  id: string;
+  name: string;
+  kind: IncidentKind;
+  status: IncidentStatus;
+  cause?: FireCause;
+  /** Distance from the place to the fire's mapped edge, km; 0 when inside. */
+  distanceKm: number;
+  /** Bearing from the place to the fire, degrees, and its compass name. */
+  bearingDeg: number;
+  direction: string;
+  areaAcres: number;
+  containment?: number;
+  confidence: number;
+  growthAcresPerHour: number;
+  firstDetectedAt: string;
+  updatedAt: string;
+  officialSince?: string;
+  state?: string;
+  county?: string;
+}
+
+/** Everything relevant to one point: nearby fires and alerts covering it. */
+export interface NearbySummary {
+  lat: number;
+  lon: number;
+  radiusKm: number;
+  generatedAt: string;
+  /** Nearest first. */
+  fires: NearbyFire[];
+  /** Alerts whose area contains the point, most urgent first. */
+  alerts: HazardAlertProperties[];
+}
+
+/** A geocoded place a person can watch. */
+export interface GeocodeResult {
+  label: string;
+  lat: number;
+  lon: number;
+  source: "census" | "photon";
+}
+
+/* ------------------------------------------------------------------ */
 /* Wind field                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -377,6 +423,8 @@ export type ServerMessage =
       hotspots: HotspotFeature[];
       wind: WindField | null;
       stats: FeedStats;
+      /** Active hazard alerts intersecting the viewport. */
+      hazards?: HazardAlertFeature[];
       /** true when the payload was truncated to the viewport budget */
       truncated?: boolean;
     }
@@ -390,6 +438,8 @@ export type ServerMessage =
       hotspotsRemove: string[];
       stats: FeedStats;
       wind?: WindField;
+      hazardsUpsert?: HazardAlertFeature[];
+      hazardsRemove?: string[];
     }
   | { type: "stats"; seq: number; serverTime: string; stats: FeedStats }
   | { type: "pong"; t: number; serverTime: string };
