@@ -41,8 +41,14 @@ export const config = {
     radiusKm: num("FUSION_RADIUS_KM", 2),
     /** Minimum points in a neighbourhood; 1 = every detector seeds. */
     minPoints: num("FUSION_MIN_POINTS", 1),
-    /** How often the fusion loop runs. */
-    intervalMs: num("FUSION_INTERVAL_MS", 4000),
+    /**
+     * How often the fusion loop runs. Live feeds arrive in batches minutes
+     * apart, so live mode fuses right after each batch and this timer only
+     * keeps decay and expiry moving.
+     */
+    intervalMs: num("FUSION_INTERVAL_MS", dataMode === "simulation" ? 4000 : 60_000),
+    /** Run a fusion pass shortly after any poll that inserts new signals. */
+    onIngest: dataMode !== "simulation",
     /** Estimated zones smaller than this are noise, not a fire. */
     minHotspots: 1,
     /** Buffer applied to the convex hull, metres. */

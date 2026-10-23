@@ -1,4 +1,4 @@
-import { destination, type RawSignal } from "@firepulse/protocol";
+import { destination, EVIDENCE_WINDOW_MAX_MIN, type RawSignal } from "@firepulse/protocol";
 import type { AppConfig } from "./config.js";
 import type { Store } from "./store/types.js";
 import type { FusionEngine } from "./fusion/engine.js";
@@ -9,6 +9,9 @@ import type { OfficialAdapter, SourceAdapter } from "./sources/types.js";
 import type { FireSimulation } from "./simulation/generator.js";
 import { cellOf } from "./h3.js";
 import type { Logger } from "pino";
+
+/** Debounce between a batch landing and the fusion pass it triggers. */
+const FUSION_DEBOUNCE_MS = 1_000;
 
 interface Task {
   name: string;
@@ -31,6 +34,7 @@ export class Pipeline {
   private fusionTimer: NodeJS.Timeout | null = null;
   private purgeTimer: NodeJS.Timeout | null = null;
   private windTimer: NodeJS.Timeout | null = null;
+  private fusionSoon: NodeJS.Timeout | null = null;
   private startedAt = Date.now();
   private stopped = false;
 
@@ -126,6 +130,28 @@ export class Pipeline {
     if (this.fusionTimer) clearInterval(this.fusionTimer);
     if (this.purgeTimer) clearInterval(this.purgeTimer);
     if (this.windTimer) clearInterval(this.windTimer);
+    if (this.fusionSoon) clearTimeout(this.fusionSoon);
+  }
+
+  /**
+   * Signals are kept for the longer of the hotspot display window and the
+   * longest fusion evidence window; anything older is never used again.
+   */
+  get retentionMs(): number {
+    return Math.max(
+      this.deps.config.ingest.hotspotRetentionHours * 3_600_000,
+      EVIDENCE_WINDOW_MAX_MIN * 60_000,
+    );
+  }
+
+  /** Coalesces a burst of inserts into one fusion pass. */
+  private requestFusion(): void {
+    if (!this.deps.config.fusion.onIngest || this.stopped || this.fusionSoon) return;
+    this.fusionSoon = setTimeout(() => {
+      this.fusionSoon = null;
+      void this.runFusion();
+    }, FUSION_DEBOUNCE_MS);
+    this.fusionSoon.unref?.();
   }
 
   /** Used by the crowd-sourced and CAD webhook endpoints. */
@@ -136,6 +162,7 @@ export class Pipeline {
     if (inserted > 0) {
       this.deps.hotspots.add(normalized, now);
       this.deps.metrics.record(normalized, now);
+      this.requestFusion();
     }
     return inserted;
   }
@@ -195,7 +222,10 @@ export class Pipeline {
   private async pollSource(adapter: SourceAdapter): Promise<void> {
     const now = Date.now();
     try {
-      const signals = await adapter.poll({ now, since: now - adapter.intervalMs - 2_000 });
+      const cutoff = now - this.retentionMs;
+      const signals = (await adapter.poll({ now, since: now - adapter.intervalMs - 2_000 })).filter(
+        (s) => Date.parse(s.observedAt) >= cutoff,
+      );
       if (signals.length === 0) return;
       const normalized = signals.map((s) => this.normalize(s, now));
       const inserted = await this.deps.store.insertSignals(normalized);
@@ -208,6 +238,7 @@ export class Pipeline {
         // Hotspots are pushed immediately on the next fusion tick; if the
         // fusion loop is idle, publish an empty delta so heat still streams.
         this.deps.hub.publish([], []);
+        this.requestFusion();
       }
     } catch (err) {
       this.deps.log.warn({ err, adapter: adapter.id }, "source poll failed");
@@ -221,6 +252,8 @@ export class Pipeline {
       if (batch.features.length === 0) return;
       const delta = await this.deps.engine.ingestOfficial(batch.features, batch.perimeters, now);
       if (delta.upserts.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
+      // Estimates fold into new perimeters on the next pass.
+      this.requestFusion();
       this.deps.log.info(
         { incidents: batch.features.length, adapter: adapter.id },
         "official ground truth ingested",
@@ -231,7 +264,7 @@ export class Pipeline {
   }
 
   private async purge(): Promise<void> {
-    const cutoff = new Date(Date.now() - 24 * 3_600_000);
+    const cutoff = new Date(Date.now() - this.retentionMs);
     try {
       const removed = await this.deps.store.purgeSignals(cutoff);
       this.deps.hotspots.trim();
