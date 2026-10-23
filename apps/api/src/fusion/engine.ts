@@ -661,9 +661,14 @@ export class FusionEngine {
       if (p.confidence < minConfidence) continue;
       if (!featureIntersectsBBox(f, bbox)) continue;
       out.push(f);
-      if (out.length >= (opts.limit ?? 900)) break;
     }
-    return out;
+    // When the budget can't hold everything, keep what matters most:
+    // official fires, then confirmed estimates, then single-pass heat.
+    const limit = opts.limit ?? 900;
+    if (out.length <= limit) return out;
+    const rank = (f: IncidentFeature) =>
+      f.properties.kind === "official" ? 0 : f.properties.confirmation === "single" ? 2 : 1;
+    return out.sort((a, b) => rank(a) - rank(b) || b.properties.confidence - a.properties.confidence).slice(0, limit);
   }
 
   /* ------------------------------------------------------------------ */

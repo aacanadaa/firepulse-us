@@ -2301,3 +2301,232 @@ button {
   line-height: 1.5;
   color: var(--muted);
 }
+
+/* -------------------------------- account -------------------------------- */
+
+.acct-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  background: rgba(17, 17, 17, 0.18);
+}
+
+.acct-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 96;
+  width: min(380px, 100vw);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  border-left: 1px solid var(--line);
+}
+
+.acct-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.acct-section {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.acct-lead {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.acct-hint {
+  margin: 0;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.acct-error {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--danger);
+}
+
+.acct-form {
+  display: grid;
+  gap: 8px;
+}
+
+.acct-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.acct-form input,
+.acct-times input {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.acct-form input:focus,
+.acct-times input:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.acct-or {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.acct-or::before,
+.acct-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.acct-google {
+  text-decoration: none;
+}
+
+.acct-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+
+.acct-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.acct-dot.on {
+  background: var(--forest);
+}
+
+.acct-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.acct-actions a.btn {
+  text-decoration: none;
+}
+
+.acct-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.acct-check input {
+  margin-top: 2px;
+  accent-color: var(--ink);
+}
+
+.acct-check small {
+  display: block;
+  margin-top: 1px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.acct-times {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.acct-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.acct-history a {
+  display: grid;
+  gap: 2px;
+  padding: 7px 0 7px 9px;
+  border-left: 2px solid var(--line);
+  text-decoration: none;
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.acct-history a.sev-urgent {
+  border-left-color: var(--danger);
+}
+
+.acct-history a.sev-warning {
+  border-left-color: var(--warn);
+}
+
+.acct-history strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.acct-history small {
+  font-size: 9px;
+  color: var(--faint);
+}
+
+.acct-danger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.np-cta {
+  display: grid;
+  gap: 7px;
+  margin: 0 16px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.np-cta .btn {
+  justify-self: start;
+}

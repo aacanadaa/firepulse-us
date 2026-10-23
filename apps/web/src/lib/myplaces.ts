@@ -1,8 +1,9 @@
 "use client";
 
-import type { GeocodeResult, NearbySummary } from "@firepulse/protocol";
+import type { AccountPlace, GeocodeResult, NearbySummary } from "@firepulse/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "./store";
+import { accountFetch } from "./account";
 
 /** A place someone watches: home, work, a parent's house. */
 export interface WatchedPlace {
@@ -40,13 +41,38 @@ function save(places: WatchedPlace[]): void {
 }
 
 /**
- * Places kept in this browser. Accounts (later) will sync them; until then
- * they never leave the device except as coordinates in nearby queries.
+ * Watched places. Signed out, they're kept in this browser; signed in, they
+ * live in the account (so alerts can be sent) and any kept in the browser
+ * are moved there once.
  */
-export function usePlaces() {
+export function usePlaces(signedIn: boolean) {
   const [places, setPlaces] = useState<WatchedPlace[]>(() => (typeof window === "undefined" ? [] : load()));
+  const [error, setError] = useState<string | null>(null);
 
-  const update = useCallback((next: (prev: WatchedPlace[]) => WatchedPlace[]) => {
+  useEffect(() => {
+    if (!signedIn) {
+      setPlaces(load());
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const local = load();
+        const remote = local.length
+          ? await accountFetch<AccountPlace[]>("/api/v1/me/places/import", { method: "POST", body: { places: local } })
+          : await accountFetch<AccountPlace[]>("/api/v1/me/places");
+        if (local.length) save([]);
+        if (!cancelled) setPlaces(remote);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Couldn't load your places.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const updateLocal = useCallback((next: (prev: WatchedPlace[]) => WatchedPlace[]) => {
     setPlaces((prev) => {
       const value = next(prev).slice(0, MAX_PLACES);
       save(value);
@@ -55,27 +81,56 @@ export function usePlaces() {
   }, []);
 
   const add = useCallback(
-    (place: Omit<WatchedPlace, "id" | "radiusKm"> & { radiusKm?: number }): WatchedPlace => {
-      const created: WatchedPlace = {
-        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    async (place: Omit<WatchedPlace, "id" | "radiusKm"> & { radiusKm?: number }): Promise<WatchedPlace> => {
+      const input = {
         radiusKm: DEFAULT_RADIUS_KM,
         ...place,
         lat: Math.round(place.lat * 1e5) / 1e5,
         lon: Math.round(place.lon * 1e5) / 1e5,
       };
-      update((prev) => [created, ...prev.filter((p) => p.name !== created.name)]);
+      setError(null);
+      if (signedIn) {
+        const created = await accountFetch<AccountPlace>("/api/v1/me/places", { method: "POST", body: input }).catch((err) => {
+          setError(err instanceof Error ? err.message : "Couldn't save that place.");
+          throw err;
+        });
+        setPlaces((prev) => [...prev, created]);
+        return created;
+      }
+      const created: WatchedPlace = { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, ...input };
+      updateLocal((prev) => [created, ...prev.filter((p) => p.name !== created.name)]);
       return created;
     },
-    [update],
+    [signedIn, updateLocal],
   );
 
-  const remove = useCallback((id: string) => update((prev) => prev.filter((p) => p.id !== id)), [update]);
+  const remove = useCallback(
+    (id: string) => {
+      if (signedIn) {
+        setPlaces((prev) => prev.filter((p) => p.id !== id));
+        void accountFetch(`/api/v1/me/places/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => undefined);
+        return;
+      }
+      updateLocal((prev) => prev.filter((p) => p.id !== id));
+    },
+    [signedIn, updateLocal],
+  );
+
   const setRadius = useCallback(
-    (id: string, radiusKm: number) => update((prev) => prev.map((p) => (p.id === id ? { ...p, radiusKm } : p))),
-    [update],
+    (id: string, radiusKm: number) => {
+      if (signedIn) {
+        setPlaces((prev) => prev.map((p) => (p.id === id ? { ...p, radiusKm } : p)));
+        void accountFetch(`/api/v1/me/places/${encodeURIComponent(id)}`, { method: "PATCH", body: { radiusKm } }).catch(
+          () => undefined,
+        );
+        return;
+      }
+      updateLocal((prev) => prev.map((p) => (p.id === id ? { ...p, radiusKm } : p)));
+    },
+    [signedIn, updateLocal],
   );
 
-  return { places, add, remove, setRadius, full: places.length >= MAX_PLACES };
+  return { places, add, remove, setRadius, error, full: places.length >= MAX_PLACES };
 }
 
 /** Nearby summaries for every watched place, refreshed every minute. */

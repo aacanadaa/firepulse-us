@@ -7,10 +7,12 @@ import { apiGet, useLiveFeed, useSpread, type TimelineResponse } from "@/lib/sto
 import { selectHotspots, selectIncidents, type FeedTab, type KindFilter } from "@/lib/select";
 import type { MapType } from "@/lib/places";
 import { useNearby, usePlaces, type WatchedPlace } from "@/lib/myplaces";
+import { registerServiceWorker, useAccount, usePush } from "@/lib/account";
 import type { LayerFlags } from "./MapCanvas";
 import AppHeader from "./AppHeader";
 import Sidebar, { type SidebarMode } from "./Sidebar";
 import NearbyPanel from "./NearbyPanel";
+import AccountPanel from "./AccountPanel";
 import DetailPanel from "./DetailPanel";
 import Timeline from "./Timeline";
 import { Icon } from "./ui";
@@ -88,7 +90,12 @@ export default function FirePulseApp() {
   });
   const [focusArea, setFocusArea] = useState<{ lon: number; lat: number; radiusKm: number; nonce: number } | null>(null);
   const [pendingSelect, setPendingSelect] = useState<{ id: string; at: number } | null>(null);
-  const placesApi = usePlaces();
+  const account = useAccount();
+  const signedIn = Boolean(account.state?.user);
+  const push = usePush(account.state?.pushPublicKey ?? null, signedIn);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const placesApi = usePlaces(signedIn);
   const nearby = useNearby(placesApi.places);
 
   const now = clock + store.serverSkewMs;
@@ -331,11 +338,70 @@ export default function FirePulseApp() {
 
   const handleAddPlace = useCallback(
     (place: { name: string; lat: number; lon: number }) => {
-      const created = placesApi.add(place);
-      focusOn(created);
+      placesApi
+        .add(place)
+        .then(focusOn)
+        .catch(() => undefined);
     },
     [placesApi, focusOn],
   );
+
+  /* ---------------------- deep links (alerts, sign-in) ------------------ */
+  const placesRef = useRef(placesApi.places);
+  placesRef.current = placesApi.places;
+
+  const openLink = useCallback(
+    (search: string) => {
+      const q = new URLSearchParams(search);
+      const placeId = q.get("place");
+      const incidentId = q.get("incident");
+      if (placeId || incidentId) {
+        setSidebarMode("near");
+        setSidebarOpen(window.innerWidth > 900);
+      }
+      const place = placeId ? placesRef.current.find((p) => p.id === placeId) : undefined;
+      if (incidentId) {
+        if (store.incidents.has(incidentId)) {
+          handleSelect(incidentId, true);
+        } else {
+          // Off screen: find where it is, fly there, select it when it arrives.
+          setPendingSelect({ id: incidentId, at: Date.now() });
+          apiGet<{ incident?: IncidentFeature }>(`/api/v1/incidents/${encodeURIComponent(incidentId)}`)
+            .then((d) => {
+              const p = d.incident?.properties;
+              if (p) focusOn({ lon: p.lon, lat: p.lat, radiusKm: 8 });
+            })
+            .catch(() => (place ? focusOn(place) : undefined));
+        }
+      } else if (place) {
+        focusOn(place);
+      }
+    },
+    [store, handleSelect, focusOn],
+  );
+
+  useEffect(() => {
+    void registerServiceWorker();
+    const q = new URLSearchParams(window.location.search);
+    const err = q.get("auth_error");
+    if (err) {
+      setAuthError(err);
+      setAccountOpen(true);
+    }
+    if (q.has("place") || q.has("incident") || err) {
+      // Wait for places to load before resolving a place link.
+      const search = window.location.search;
+      window.setTimeout(() => openLink(search), 1200);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { type?: string; url?: string } | null;
+      if (data?.type === "open" && data.url) openLink(new URL(data.url, window.location.origin).search);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleLayer = useCallback((key: keyof LayerFlags) => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -382,6 +448,17 @@ export default function FirePulseApp() {
         mergeCount={merges.count}
         config={store.config}
         now={now}
+        accountSlot={
+          <button
+            type="button"
+            className={`btn ${signedIn ? "" : "btn-primary"}`}
+            onClick={() => setAccountOpen(true)}
+            title={signedIn ? "Alerts and account" : "Sign in to get alerts"}
+          >
+            <Icon name="pin" size={12} />
+            <span className="hide-sm">{signedIn ? (push.subscribed ? "Alerts on" : "Alerts off") : "Get alerts"}</span>
+          </button>
+        }
       />
 
       <div className={`main ${sidebarOpen ? "" : "no-sidebar"} ${showDetail ? "inspect" : ""}`}>
@@ -414,6 +491,31 @@ export default function FirePulseApp() {
                 onRadius={placesApi.setRadius}
                 onFocusPlace={(p: WatchedPlace) => focusOn(p)}
                 onSelectFire={handleNearbyFire}
+                cta={
+                  account.unavailable || placesApi.places.length === 0 ? null : !signedIn ? (
+                    <div className="np-cta">
+                      <span>Get an alert on this device when a fire or an evacuation order comes near these places.</span>
+                      <button type="button" className="btn btn-primary" onClick={() => setAccountOpen(true)}>
+                        Create a free account
+                      </button>
+                    </div>
+                  ) : !push.subscribed ? (
+                    <div className="np-cta">
+                      <span>
+                        {push.needsInstall
+                          ? "To get alerts on iPhone, add FirePulse to your home screen first."
+                          : "Alerts are off on this device."}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => (push.needsInstall ? setAccountOpen(true) : void push.enable())}
+                      >
+                        {push.needsInstall ? "Show me how" : "Turn on alerts"}
+                      </button>
+                    </div>
+                  ) : null
+                }
               />
             }
             onTab={setTab}
@@ -556,6 +658,19 @@ export default function FirePulseApp() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {accountOpen ? (
+        <AccountPanel
+          account={account}
+          push={push}
+          now={now}
+          error={authError}
+          onClose={() => {
+            setAccountOpen(false);
+            setAuthError(null);
+          }}
+        />
       ) : null}
 
       <style>{`@keyframes loadingBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(360%); } }`}</style>

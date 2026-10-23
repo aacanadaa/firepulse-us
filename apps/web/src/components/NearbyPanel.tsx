@@ -16,6 +16,8 @@ interface Props {
   onRadius: (id: string, radiusKm: number) => void;
   onFocusPlace: (place: WatchedPlace) => void;
   onSelectFire: (fire: NearbyFire) => void;
+  /** Prompt to sign in or turn on alerts, shown under the search box. */
+  cta?: React.ReactNode;
 }
 
 function until(iso: string | undefined): string {
@@ -226,6 +228,7 @@ export default function NearbyPanel(props: Props) {
   return (
     <div className="np feed thin">
       <PlaceSearch onAdd={props.onAdd} full={props.full} />
+      {props.cta}
 
       {places.length === 0 ? (
         <div className="empty">

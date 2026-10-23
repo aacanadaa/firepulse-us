@@ -26,6 +26,8 @@ interface Props {
   mergeCount: number;
   config: PublicConfig | null;
   now: number;
+  /** Sign-in / alerts button. */
+  accountSlot?: React.ReactNode;
 }
 
 const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
@@ -72,6 +74,7 @@ export default function AppHeader({
   mergeCount,
   config,
   now,
+  accountSlot,
 }: Props) {
   const theme = MAP_THEMES[mapType];
   const type = MAP_TYPES.find((t) => t.id === mapType);
@@ -148,6 +151,8 @@ export default function AppHeader({
             </button>
           ))}
         </div>
+
+        {accountSlot}
 
         <div style={{ position: "relative" }}>
           <button

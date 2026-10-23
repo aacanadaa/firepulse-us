@@ -249,15 +249,15 @@ export function markerLayer(
     radiusUnits: "pixels",
     radiusMinPixels: 2.8,
     radiusMaxPixels: 6,
-    getRadius: estimated ? 4 : 3.4,
+    getRadius: (f: IncidentFeature) => (unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4),
     // Estimates are rings; official points are filled. This keeps the
     // provisional marker distinguishable from a thermal speck at any zoom.
     filled: !estimated,
     stroked: true,
     getLineColor: (f: IncidentFeature) =>
-      unconfirmed(f) ? withAlpha(rgba(theme.estimated), 110) : rgba(estimated ? theme.estimated : theme.markerStroke),
+      unconfirmed(f) ? withAlpha(rgba(theme.estimated), 70) : rgba(estimated ? theme.estimated : theme.markerStroke),
     lineWidthUnits: "pixels",
-    getLineWidth: estimated ? 1.6 : 1.2,
+    getLineWidth: (f: IncidentFeature) => (unconfirmed(f) ? 1 : estimated ? 1.6 : 1.2),
     getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],
     getFillColor: rgba(theme.official),
   });
@@ -300,7 +300,8 @@ export function incidentLabelLayer(
 ) {
   const { selectedId, zoom, visible, theme } = opts;
 
-  const ranked = [...incidents].sort((a, b) => {
+  // Unconfirmed satellite heat is too common to label; it's named when selected.
+  const ranked = incidents.filter((f) => f.id === selectedId || !unconfirmed(f)).sort((a, b) => {
     if (a.id === selectedId) return -1;
     if (b.id === selectedId) return 1;
     const kindDelta =

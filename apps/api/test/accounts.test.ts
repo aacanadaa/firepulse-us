@@ -205,7 +205,7 @@ describe("account routes", () => {
     const cookie = cookieOf(
       await app.inject({ method: "POST", url: "/api/v1/auth/signup", headers: json, payload: { username: "kim", password: "a sensible passphrase" } }),
     );
-    const add = (payload: unknown) => app.inject({ method: "POST", url: "/api/v1/me/places", headers: { ...json, cookie }, payload });
+    const add = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/api/v1/me/places", headers: { ...json, cookie }, payload });
     expect((await add({ name: "", lat: 1, lon: 1 })).statusCode).toBe(400);
     expect((await add({ name: "x", lat: 95, lon: 1 })).statusCode).toBe(400);
     for (let i = 0; i < 5; i++) expect((await add({ name: `p${i}`, lat: 40, lon: -105 })).statusCode).toBe(200);

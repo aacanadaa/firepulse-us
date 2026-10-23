@@ -337,4 +337,23 @@ describe("fusion engine", () => {
       expect(engine.counts().official).toBe(12);
     });
   });
+
+  it("keeps official fires and confirmed estimates when the snapshot budget is tight", async () => {
+    const store = new MemoryStore();
+    const engine = new FusionEngine(store, cfg, log);
+    // 20 single-pass clusters, created first.
+    await store.insertSignals(
+      Array.from({ length: 20 }, (_, i) =>
+        signal({ id: `heat${i}`, source: "viirs", lon: -100 + i * 0.5, lat: 35, observedAt: iso(3_600_000) }),
+      ),
+    );
+    await engine.run(NOW);
+    await engine.ingestOfficial(
+      [officialFeature({ id: "official-late", name: "Late", lon: -90, lat: 40, firstDetectedAt: iso(7_200_000), officialSince: iso(3_600_000) })],
+      [],
+    );
+    const view = engine.view([-130, 20, -60, 55], { limit: 5 });
+    expect(view).toHaveLength(5);
+    expect(view[0]!.id).toBe("official-late");
+  });
 });

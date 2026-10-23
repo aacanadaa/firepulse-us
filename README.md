@@ -46,6 +46,13 @@ from the merge ledger: `official_since − first_detected_at`.
   Every fire gets a plain-language status ("Official fire · 35% contained",
   "Possible fire · not confirmed by fire agencies", "Planned burn") and links
   to the official sources. Places are kept in the browser.
+- **Alerts on your devices.** Create an account with a username and password,
+  or Sign in with Google, then turn on alerts in the browser (or in the app added to
+  an iPhone's home screen). FirePulse pushes a notification when an evacuation
+  order or fire warning covers a watched place, when a fire is confirmed within
+  its radius or crosses 10, 5 or 2 km toward it, and (once a day) when red flag
+  conditions start. Quiet hours hold everything except evacuations and fire
+  warnings, and each alert is sent once.
 - **Warnings on the map.** NWS alert areas are drawn under the fire data: solid
   red for evacuations and fire warnings, dashed amber for fire weather, grey
   for smoke and air quality.

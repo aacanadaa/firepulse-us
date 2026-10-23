@@ -8,6 +8,9 @@ export const metadata: Metadata = {
     "Sub-5-minute wildfire early detection: satellite thermal anomalies, CAD dispatch, camera vectors and crowdsourced reports fused into live Estimated Active Fire Zones alongside official NIFC perimeters.",
   applicationName: "FirePulse US",
   keywords: ["wildfire", "early detection", "GOES", "FIRMS", "NIFC", "PostGIS", "MapLibre"],
+  manifest: "/manifest.webmanifest",
+  icons: { apple: "/icons/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "FirePulse", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
