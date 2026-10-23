@@ -12,8 +12,11 @@ import { createServer } from "./server.js";
 import { SpreadRuntime } from "./spread/index.js";
 import { FireSimulation } from "./simulation/generator.js";
 import { createSimulatedAdapters, createSimulatedOfficialAdapter } from "./sources/simulated.js";
-import { createFirmsAdapters, createNwsAdapter, createWfigsAdapter } from "./sources/live.js";
-import type { OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { createFirmsAdapters, createWfigsAdapter } from "./sources/live.js";
+import { createNwsAdapter } from "./sources/nws.js";
+import { HazardLayer } from "./realtime/hazards.js";
+import { SourceHealthBoard } from "./realtime/health.js";
+import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
 import type { Store } from "./store/types.js";
 
 const log = pino({
@@ -65,16 +68,18 @@ async function main(): Promise<void> {
 
   let adapters: SourceAdapter[] = [];
   let officialAdapter: OfficialAdapter | null = null;
+  let hazardAdapter: HazardAdapter | null = null;
 
   if (config.dataMode === "simulation" || !config.dataMode) {
     if (!simulation) throw new Error("simulation mode requires a generator");
     adapters = createSimulatedAdapters(simulation);
     officialAdapter = createSimulatedOfficialAdapter(simulation);
   } else {
-    adapters = [...createFirmsAdapters(), createNwsAdapter()];
+    adapters = createFirmsAdapters();
     officialAdapter = createWfigsAdapter();
+    hazardAdapter = createNwsAdapter(config.userAgent);
     if (adapters.length === 0) {
-      log.warn("live mode with no FIRMS_MAP_KEY — only WFIGS/NWS will ingest");
+      log.warn("live mode with no FIRMS_MAP_KEY — no satellite detections; only WFIGS/NWS will ingest");
     }
   }
 
@@ -87,6 +92,8 @@ async function main(): Promise<void> {
   const engine = new FusionEngine(store, config, log, cache.available ? cache : undefined);
   const hotspots = new HotspotLog(config.ingest.hotspotRetentionHours * 3_600_000);
   const metrics = new IngestMetrics();
+  const hazards = new HazardLayer();
+  const health = new SourceHealthBoard();
   const hub = new RealtimeHub({
     engine,
     hotspots,
@@ -95,6 +102,7 @@ async function main(): Promise<void> {
     publicConfig: config.publicConfig,
     log,
     cache,
+    health,
   });
 
   const pipeline = new Pipeline({
@@ -106,6 +114,9 @@ async function main(): Promise<void> {
     config,
     adapters,
     officialAdapter,
+    hazardAdapter,
+    hazards,
+    health,
     simulation,
     log,
   });
@@ -132,6 +143,8 @@ async function main(): Promise<void> {
     pipeline,
     simulation,
     spread,
+    hazards,
+    health,
     log,
     startedAt,
   });

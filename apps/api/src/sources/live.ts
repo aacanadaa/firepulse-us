@@ -336,62 +336,6 @@ function toIso(v: unknown): string {
   return new Date().toISOString();
 }
 
-/* -------------------------------------------------------------------- */
-/* NWS Red Flag alerts                                                  */
-/* -------------------------------------------------------------------- */
-
-export function parseNwsAlerts(json: unknown): RawSignal[] {
-  const out: RawSignal[] = [];
-  const collection = json as { features?: unknown[] };
-  if (!collection || !Array.isArray(collection.features)) return out;
-  for (const raw of collection.features) {
-    const f = raw as {
-      id?: string;
-      geometry?: { type: string; coordinates: unknown };
-      properties?: Record<string, unknown>;
-    };
-    if (!f.properties || !f.geometry) continue;
-    const event = String(f.properties.event ?? "");
-    if (!/red flag/i.test(event)) continue;
-    const ring = firstRing(f.geometry);
-    if (!ring) continue;
-    const [lon, lat] = ringCentroid(ring);
-    const id = `nws-${String(f.id ?? f.properties.id ?? `${lon},${lat}`)}`;
-    out.push({
-      id,
-      source: "nws",
-      kind: "weather",
-      tier: 3,
-      lon,
-      lat,
-      observedAt: toIso(f.properties.sent ?? f.properties.effective),
-      receivedAt: new Date().toISOString(),
-      providerConfidence: 1,
-      label: `${event} — ${String(f.properties.areaDesc ?? "").slice(0, 80)}`,
-      meta: {
-        dedupeKey: id,
-        event,
-        severity: f.properties.severity,
-        expires: f.properties.expires,
-        polygon: ring,
-      },
-    });
-  }
-  return out;
-}
-
-function firstRing(geometry: { type: string; coordinates: unknown }): [number, number][] | null {
-  if (geometry.type === "Polygon") {
-    const ring = (geometry.coordinates as number[][][])[0];
-    return ring ? (ring as [number, number][]) : null;
-  }
-  if (geometry.type === "MultiPolygon") {
-    const poly = (geometry.coordinates as number[][][][])[0];
-    return poly?.[0] ? (poly[0] as [number, number][]) : null;
-  }
-  return null;
-}
-
 /* ==================================================================== */
 /*  Live adapters                                                       */
 /* ==================================================================== */
@@ -426,8 +370,6 @@ const WFIGS_PERIMETER_FIELDS = [
   "poly_DateCurrent",
 ];
 const ARCGIS_PAGE = 2000;
-const NWS_URL =
-  process.env.NWS_URL ?? "https://api.weather.gov/alerts/active?event=Red%20Flag%20Warning&status=actual";
 
 async function getJson(url: string, headers: Record<string, string> = {}, timeoutMs = 15_000): Promise<unknown> {
   const res = await fetch(url, {
@@ -536,20 +478,6 @@ export function createWfigsAdapter(): OfficialAdapter {
       const batch = mergeOfficialBatches(parseWfigsGeoJSON(perimeters), parseWfigsGeoJSON(incidents));
       // Both layers list every current incident, so anything missing is out.
       return { ...batch, complete: { idPrefix: "wfigs-" } };
-    },
-  };
-}
-
-export function createNwsAdapter(): SourceAdapter {
-  return {
-    id: "nws-alerts",
-    label: "NWS Red Flag Warnings",
-    sources: ["nws"],
-    tier: 3,
-    intervalMs: 5 * 60_000,
-    enabled: true,
-    async poll() {
-      return parseNwsAlerts(await getJson(NWS_URL));
     },
   };
 }

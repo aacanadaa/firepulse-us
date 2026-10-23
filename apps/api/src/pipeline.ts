@@ -5,7 +5,10 @@ import type { FusionEngine } from "./fusion/engine.js";
 import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
 import type { IngestMetrics } from "./realtime/metrics.js";
-import type { OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import type { HazardLayer } from "./realtime/hazards.js";
+import type { SourceHealthBoard } from "./realtime/health.js";
+import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { hazardContextSignals } from "./sources/nws.js";
 import type { FireSimulation } from "./simulation/generator.js";
 import { cellOf } from "./h3.js";
 import type { Logger } from "pino";
@@ -37,6 +40,8 @@ export class Pipeline {
   private fusionSoon: NodeJS.Timeout | null = null;
   private startedAt = Date.now();
   private stopped = false;
+  /** Adapters bootstrap already polled; their first scheduled poll waits a cycle. */
+  private polledAtBoot = new Set<string>();
 
   constructor(
     private readonly deps: {
@@ -48,13 +53,22 @@ export class Pipeline {
       config: AppConfig;
       adapters: SourceAdapter[];
       officialAdapter: OfficialAdapter | null;
+      hazardAdapter: HazardAdapter | null;
+      hazards: HazardLayer;
+      health: SourceHealthBoard;
       simulation: FireSimulation | null;
       log: Logger;
     },
-  ) {}
+  ) {
+    const { adapters, officialAdapter, hazardAdapter, health } = deps;
+    for (const a of adapters) if (a.enabled) health.register(a.id, a.label, "signals", a.intervalMs);
+    if (officialAdapter?.enabled) health.register(officialAdapter.id, officialAdapter.label, "official", officialAdapter.intervalMs);
+    if (hazardAdapter?.enabled) health.register(hazardAdapter.id, hazardAdapter.label, "hazards", hazardAdapter.intervalMs);
+  }
 
   async bootstrap(): Promise<void> {
-    const { store, engine, hotspots, metrics, config, simulation, adapters, officialAdapter, log } = this.deps;
+    const { store, engine, hotspots, metrics, config, simulation, adapters, officialAdapter, hazardAdapter, log } =
+      this.deps;
     const now = Date.now();
 
     if (simulation) {
@@ -86,10 +100,14 @@ export class Pipeline {
 
     // Fill in whatever happened while the process was down.
     const backfill = adapters.filter((a) => a.enabled && a.backfill);
-    if (backfill.length > 0 || (!simulation && officialAdapter?.enabled)) {
+    const official = !simulation && officialAdapter?.enabled ? officialAdapter : null;
+    const hazards = hazardAdapter?.enabled ? hazardAdapter : null;
+    for (const a of [...backfill, official, hazards]) if (a) this.polledAtBoot.add(a.id);
+    if (backfill.length > 0 || official || hazards) {
       await Promise.all([
         ...backfill.map((a) => this.pollSource(a, now - this.retentionMs)),
-        ...(!simulation && officialAdapter?.enabled ? [this.pollOfficial(officialAdapter)] : []),
+        ...(official ? [this.pollOfficial(official)] : []),
+        ...(hazards ? [this.pollHazards(hazards)] : []),
       ]);
       log.info({ adapters: backfill.map((a) => a.id) }, "backfilled live feeds");
     }
@@ -106,12 +124,23 @@ export class Pipeline {
 
     for (const adapter of adapters) {
       if (!adapter.enabled) continue;
-      this.tasks.push(this.schedule(adapter.id, adapter.intervalMs, () => this.pollSource(adapter)));
+      this.tasks.push(
+        this.schedule(adapter.id, adapter.intervalMs, () => this.pollSource(adapter), !this.polledAtBoot.has(adapter.id)),
+      );
     }
 
     if (this.deps.officialAdapter?.enabled) {
       const official = this.deps.officialAdapter;
-      this.tasks.push(this.schedule("official", official.intervalMs, () => this.pollOfficial(official)));
+      this.tasks.push(
+        this.schedule("official", official.intervalMs, () => this.pollOfficial(official), !this.polledAtBoot.has(official.id)),
+      );
+    }
+
+    if (this.deps.hazardAdapter?.enabled) {
+      const hazards = this.deps.hazardAdapter;
+      this.tasks.push(
+        this.schedule(hazards.id, hazards.intervalMs, () => this.pollHazards(hazards), !this.polledAtBoot.has(hazards.id)),
+      );
     }
 
     this.fusionTimer = setInterval(() => {
@@ -238,9 +267,9 @@ export class Pipeline {
     const now = Date.now();
     try {
       const cutoff = now - this.retentionMs;
-      const signals = (await adapter.poll({ now, since: since ?? now - adapter.intervalMs - 2_000 })).filter(
-        (s) => Date.parse(s.observedAt) >= cutoff,
-      );
+      const polled = await adapter.poll({ now, since: since ?? now - adapter.intervalMs - 2_000 });
+      this.deps.health.success(adapter.id, { now, count: polled.length, observedAt: polled.map((s) => s.observedAt) });
+      const signals = polled.filter((s) => Date.parse(s.observedAt) >= cutoff);
       if (signals.length === 0) return;
       const normalized = signals.map((s) => this.normalize(s, now));
       const inserted = await this.deps.store.insertSignals(normalized);
@@ -257,6 +286,7 @@ export class Pipeline {
         this.requestFusion();
       }
     } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "source poll failed");
     }
   }
@@ -265,6 +295,11 @@ export class Pipeline {
     const now = Date.now();
     try {
       const batch = await adapter.poll({ now, since: this.startedAt - 24 * 3_600_000 });
+      this.deps.health.success(adapter.id, {
+        now,
+        count: batch.features.length,
+        observedAt: batch.features.map((f) => f.properties.updatedAt),
+      });
       if (batch.features.length === 0) return;
       const delta = await this.deps.engine.ingestOfficial(batch.features, batch.perimeters, now);
       if (batch.complete) {
@@ -279,7 +314,36 @@ export class Pipeline {
         "official ground truth ingested",
       );
     } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "official poll failed");
+    }
+  }
+
+  private async pollHazards(adapter: HazardAdapter): Promise<void> {
+    const now = Date.now();
+    try {
+      const { alerts, warnings } = await adapter.poll({ now, since: now - adapter.intervalMs });
+      this.deps.health.success(adapter.id, {
+        now,
+        count: alerts.length,
+        observedAt: alerts.map((a) => a.properties.sent),
+        warnings,
+      });
+      if (warnings.length > 0) this.deps.log.warn({ adapter: adapter.id, warnings }, "hazard poll incomplete");
+      const { upserts, removes } = this.deps.hazards.replace(alerts);
+      if (upserts.length > 0 || removes.length > 0) {
+        this.deps.log.info({ active: alerts.length, new: upserts.length, ended: removes.length }, "hazard alerts updated");
+      }
+      // Fire-weather alerts double as fusion context for clusters inside them.
+      const context = hazardContextSignals(alerts, new Date(now).toISOString()).map((s) => this.normalize(s, now));
+      const inserted = await this.deps.store.insertSignals(context);
+      if (inserted.length > 0) {
+        this.deps.metrics.record(inserted, now);
+        this.requestFusion();
+      }
+    } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
+      this.deps.log.warn({ err, adapter: adapter.id }, "hazard poll failed");
     }
   }
 
@@ -294,7 +358,7 @@ export class Pipeline {
     }
   }
 
-  private schedule(name: string, intervalMs: number, fn: () => Promise<void>): Task {
+  private schedule(name: string, intervalMs: number, fn: () => Promise<void>, runSoon = true): Task {
     const task: Task = { name, intervalMs, timer: null, running: false };
     const tick = async () => {
       if (task.running) return;
@@ -306,7 +370,7 @@ export class Pipeline {
       }
     };
     // Stagger the first poll so adapters do not fire in lockstep.
-    setTimeout(() => void tick(), Math.random() * Math.min(intervalMs, 3000));
+    if (runSoon) setTimeout(() => void tick(), Math.random() * Math.min(intervalMs, 3000));
     task.timer = setInterval(() => void tick(), intervalMs);
     task.timer.unref?.();
     return task;

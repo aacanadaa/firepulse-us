@@ -1,4 +1,4 @@
-import type { IncidentFeature, RawSignal, SourceId, Tier } from "@firepulse/protocol";
+import type { HazardAlertFeature, IncidentFeature, RawSignal, SourceId, Tier } from "@firepulse/protocol";
 
 export interface PollContext {
   now: number;
@@ -45,4 +45,13 @@ export interface OfficialAdapter {
   intervalMs: number;
   enabled: boolean;
   poll(ctx: PollContext): Promise<OfficialBatch>;
+}
+
+/** Active hazard alerts (NWS): always the full current set. */
+export interface HazardAdapter {
+  id: string;
+  label: string;
+  intervalMs: number;
+  enabled: boolean;
+  poll(ctx: PollContext): Promise<{ alerts: HazardAlertFeature[]; warnings: string[] }>;
 }

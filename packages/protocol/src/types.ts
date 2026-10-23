@@ -256,6 +256,55 @@ export interface HotspotFeature {
 }
 
 /* ------------------------------------------------------------------ */
+/* Hazard alerts (NWS / IPAWS)                                          */
+/* ------------------------------------------------------------------ */
+
+/** The NWS events FirePulse follows, most urgent first. */
+export const HAZARD_EVENTS = [
+  "Evacuation Immediate",
+  "Fire Warning",
+  "Extreme Fire Danger",
+  "Red Flag Warning",
+  "Fire Weather Watch",
+  "Air Quality Alert",
+  "Dense Smoke Advisory",
+] as const;
+
+export type HazardEvent = (typeof HAZARD_EVENTS)[number];
+
+export interface MultiPolygonGeometry {
+  type: "MultiPolygon";
+  coordinates: Ring[][];
+}
+
+export interface HazardAlertProperties {
+  /** NWS alert id (a CAP URN). */
+  id: string;
+  event: HazardEvent;
+  severity: string;
+  urgency: string;
+  headline?: string;
+  description?: string;
+  /** What people in the area are told to do (evacuate, avoid burning, ...). */
+  instruction?: string;
+  areaDesc: string;
+  sender: string;
+  sent: string;
+  effective: string;
+  expires: string;
+  ends?: string;
+  /** Link to the full alert on api.weather.gov. */
+  url: string;
+}
+
+export interface HazardAlertFeature {
+  type: "Feature";
+  id: string;
+  geometry: PolygonGeometry | MultiPolygonGeometry;
+  properties: HazardAlertProperties;
+}
+
+/* ------------------------------------------------------------------ */
 /* Wind field                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -293,6 +342,8 @@ export interface FeedStats {
   fusionRuns: number;
   lastFusionMs: number;
   clients: number;
+  /** Upstream feed health; absent when the server doesn't track it. */
+  sources?: SourceHealth[];
 }
 
 export interface ViewQuery {
@@ -342,6 +393,27 @@ export type ServerMessage =
     }
   | { type: "stats"; seq: number; serverTime: string; stats: FeedStats }
   | { type: "pong"; t: number; serverTime: string };
+
+/** One upstream feed's state, as shown in the UI and /api/health. */
+export interface SourceHealth {
+  id: string;
+  label: string;
+  kind: "signals" | "official" | "hazards" | "wind";
+  intervalMs: number;
+  /**
+   * pending: no successful poll yet; ok: polled on schedule; stale: no
+   * success for three intervals; error: the latest poll failed.
+   */
+  status: "pending" | "ok" | "stale" | "error";
+  lastSuccessAt?: string;
+  lastErrorAt?: string;
+  lastError?: string;
+  /** Newest observation in the latest successful poll (e.g. a satellite pass). */
+  lastObservedAt?: string;
+  /** Records returned by the latest successful poll. */
+  lastCount?: number;
+  warnings?: string[];
+}
 
 export interface PublicConfig {
   fusionRadiusKm: number;

@@ -20,6 +20,12 @@ function bool(name: string, fallback: boolean): boolean {
 export type DataMode = "simulation" | "live" | "hybrid";
 
 const requestedMode = process.env.DATA_MODE as DataMode | undefined;
+/** NWS and other public APIs ask callers to identify themselves with a contact. */
+const userAgent =
+  process.env.FIREPULSE_USER_AGENT ||
+  process.env.SPREAD_USER_AGENT ||
+  "FirePulse/1.0 (wildfire tracker; set FIREPULSE_USER_AGENT with a contact)";
+
 const dataMode: DataMode =
   requestedMode && ["simulation", "live", "hybrid"].includes(requestedMode)
     ? requestedMode
@@ -35,6 +41,7 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
   corsOrigin: process.env.CORS_ORIGIN ?? "*",
+  userAgent,
 
   fusion: {
     /** DBSCAN neighbourhood radius, metres. */
@@ -105,10 +112,7 @@ export const config = {
     /** Global Open-Meteo budget, in locations per minute. */
     openMeteoPerMinute: 300,
     httpTimeoutMs: 15_000,
-    /** NWS asks for a contact in the User-Agent. */
-    userAgent:
-      process.env.SPREAD_USER_AGENT ||
-      "FirePulse/1.0 (next-day spread forecasts; set SPREAD_USER_AGENT with a contact)",
+    userAgent,
   },
 
   h3Resolution: 8,

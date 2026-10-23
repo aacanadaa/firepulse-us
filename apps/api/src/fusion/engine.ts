@@ -717,7 +717,12 @@ function attachContext(
   context: RawSignal[],
   radiusKm: number,
 ): RawSignal[] {
-  return context.filter((s) => haversineKm(c, s) <= radiusKm);
+  return context.filter((s) => {
+    // Area alerts (red flag zones) apply to everything inside them.
+    const polygon = s.meta?.polygon;
+    if (Array.isArray(polygon) && polygon.length >= 4) return pointInRing(c, polygon as Ring);
+    return haversineKm(c, s) <= radiusKm;
+  });
 }
 
 function aggregateSources(signals: RawSignal[]): SourceTag[] {

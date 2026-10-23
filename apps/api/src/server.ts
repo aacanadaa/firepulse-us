@@ -9,6 +9,8 @@ import type { RedisCache } from "./store/redis.js";
 import type { FusionEngine } from "./fusion/engine.js";
 import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
+import type { HazardLayer } from "./realtime/hazards.js";
+import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
 import type { FireSimulation } from "./simulation/generator.js";
 import type { SpreadRuntime } from "./spread/index.js";
@@ -24,6 +26,8 @@ export interface ServerDeps {
   pipeline: Pipeline;
   simulation: FireSimulation | null;
   spread: SpreadRuntime;
+  hazards: HazardLayer;
+  health: SourceHealthBoard;
   log: Logger;
   startedAt: number;
 }
@@ -46,7 +50,7 @@ function bucket(count: number): string {
 }
 
 export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof Fastify>> {
-  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, spread, log } = deps;
+  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, spread, hazards, health, log } = deps;
 
   const app = Fastify({
     loggerInstance: log,
@@ -95,6 +99,8 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       simulated: config.simulated,
       clients: hub.clientCount,
       spread: spread.health(),
+      sources: health.snapshot(),
+      hazards: hazards.count,
     });
   });
 
@@ -268,9 +274,16 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     };
   });
 
+  app.get<{ Querystring: { bbox?: string } }>("/api/v1/alerts", async (req, reply) => {
+    const bbox = parseBBox(req.query.bbox);
+    if (!bbox) return reply.code(400).send({ error: "invalid bbox" });
+    const features = hazards.active(bbox);
+    return { type: "FeatureCollection", features, count: features.length };
+  });
+
   app.get("/api/v1/wind", async (_req, reply) => {
-    const field = simulation?.windField(Date.now()) ?? null;
-    if (!field) return reply.code(503).send({ error: "wind field unavailable in live mode" });
+    const field = hub.currentWind ?? simulation?.windField(Date.now()) ?? null;
+    if (!field) return reply.code(503).send({ error: "wind field not loaded yet" });
     return field;
   });
 

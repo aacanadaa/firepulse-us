@@ -15,7 +15,6 @@ import {
   mergeOfficialBatches,
   parseFirmsCsv,
   parseFirmsTime,
-  parseNwsAlerts,
   parseWfigsGeoJSON,
 } from "../src/sources/live.js";
 import { cellOf } from "../src/h3.js";
@@ -268,53 +267,6 @@ describe("WFIGS parser", () => {
   it("ignores malformed collections", () => {
     expect(parseWfigsGeoJSON(null).features).toEqual([]);
     expect(parseWfigsGeoJSON({ features: [{ geometry: null }] }).features).toEqual([]);
-  });
-});
-
-describe("NWS red flag parser", () => {
-  it("extracts Red Flag Warning polygons as context signals", () => {
-    const alerts = {
-      type: "FeatureCollection",
-      features: [
-        {
-          id: "urn:oid:1",
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [-119.9, 34.2],
-                [-118.5, 34.2],
-                [-118.5, 35.1],
-                [-119.9, 35.1],
-                [-119.9, 34.2],
-              ],
-            ],
-          },
-          properties: { event: "Red Flag Warning", severity: "Severe", sent: "2026-10-20T06:00:00Z" },
-        },
-        {
-          id: "urn:oid:2",
-          geometry: {
-            type: "Polygon",
-            coordinates: [
-              [
-                [-100, 30],
-                [-99, 30],
-                [-99, 31],
-                [-100, 30],
-              ],
-            ],
-          },
-          properties: { event: "Flood Watch" },
-        },
-      ],
-    };
-    const signals = parseNwsAlerts(alerts);
-    expect(signals).toHaveLength(1);
-    expect(signals[0]!.source).toBe("nws");
-    expect(signals[0]!.kind).toBe("weather");
-    expect(signals[0]!.tier).toBe(3);
-    expect(now).toBeGreaterThan(0);
   });
 });
 

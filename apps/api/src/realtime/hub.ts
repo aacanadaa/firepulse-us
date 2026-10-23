@@ -11,6 +11,7 @@ import type { FusionEngine } from "../fusion/engine.js";
 import { featureIntersectsBBox } from "../fusion/engine.js";
 import type { HotspotLog } from "./hotspots.js";
 import type { IngestMetrics } from "./metrics.js";
+import type { SourceHealthBoard } from "./health.js";
 import type { AppConfig } from "../config.js";
 import type { Logger } from "pino";
 import { randomUUID } from "node:crypto";
@@ -37,6 +38,8 @@ export interface HubDeps {
   config: AppConfig;
   publicConfig: PublicConfig;
   log: Logger;
+  /** Upstream feed health, included in every stats frame. */
+  health?: SourceHealthBoard;
   /** Optional: fans incident diffs out to sibling API instances. */
   cache?: RedisCache | null;
 }
@@ -68,6 +71,10 @@ export class RealtimeHub {
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  get currentWind(): WindField | null {
+    return this.wind;
   }
 
   start(): void {
@@ -331,6 +338,7 @@ export class RealtimeHub {
       fusionRuns: engine.performanceSnapshot.runs,
       lastFusionMs: engine.performanceSnapshot.durationMs,
       clients: this.clients.size,
+      sources: this.deps.health?.snapshot(),
     };
     metrics.fill(stats);
     return stats;
