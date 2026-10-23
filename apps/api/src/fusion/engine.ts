@@ -18,7 +18,7 @@ import {
   type SourceTag,
 } from "@firepulse/protocol";
 import { destination } from "@firepulse/protocol";
-import type { Store } from "../store/types.js";
+import type { MergeRecord, Store } from "../store/types.js";
 import type { RedisCache } from "../store/redis.js";
 import { cellOf, cellsOf, neighborhood } from "../h3.js";
 import type { AppConfig } from "../config.js";
@@ -119,6 +119,7 @@ export class FusionEngine {
         rings: outerRings(f),
       };
       this.tracks.set(f.id, track);
+      this.lastPersisted.set(f.id, track.signature);
       this.indexTrack(track);
     }
     const merges = await this.store.merges().catch(() => []);
@@ -318,6 +319,15 @@ export class FusionEngine {
       else created++;
     }
 
+    // ---- persist estimates that changed (the store is the system of record) --
+    const changed = [...seen]
+      .map((id) => this.tracks.get(id))
+      .filter((t): t is Track => Boolean(t) && t!.signature !== this.lastPersisted.get(t!.feature.id));
+    if (changed.length > 0) {
+      await this.store.upsertIncidents(changed.map((t) => t.feature));
+      for (const t of changed) this.lastPersisted.set(t.feature.id, t.signature);
+    }
+
     // ---- official merge pass: ground truth absorbs its precursors --------
     const merged = await this.mergeEstimatesIntoOfficial(officialFeatures, now);
     for (const f of this.drainPendingOfficialUpserts()) upserts.push(f);
@@ -386,6 +396,8 @@ export class FusionEngine {
   }
 
   private lastPublished = new Map<string, string>();
+  /** Signature last written to the store, per track. */
+  private lastPersisted = new Map<string, string>();
 
   /* ------------------------------------------------------------------ */
   /* Official ingestion (called by the official adapter)                  */
@@ -492,7 +504,9 @@ export class FusionEngine {
     if (official.length === 0) return { count: 0, removed: [] };
     let count = 0;
     const removed: string[] = [];
-    const touchedOfficial: IncidentFeature[] = [];
+    const touchedOfficial = new Map<string, IncidentFeature>();
+    const mergedEstimates: IncidentFeature[] = [];
+    const records: MergeRecord[] = [];
 
     for (const officialFeature of official) {
       const o = officialFeature.properties;
@@ -544,9 +558,10 @@ export class FusionEngine {
           peakConfidence: track.peakConfidence,
         };
         track.signature = signatureOf(track.feature);
-        touchedOfficial.push(track.feature);
+        touchedOfficial.set(officialFeature.id, officialFeature);
+        mergedEstimates.push(track.feature);
 
-        await this.store.recordMerge({
+        records.push({
           estimateId: e.id,
           officialId: o.id,
           mergedAt: new Date(now).toISOString(),
@@ -569,12 +584,20 @@ export class FusionEngine {
       }
     }
 
-    if (touchedOfficial.length > 0) {
-      await this.store.upsertIncidents(touchedOfficial);
-      for (const f of touchedOfficial) this.lastPublished.set(f.id, signatureOf(f));
-      if (this.cache) await this.cache.upsertIncidents(touchedOfficial);
+    if (records.length > 0) {
+      const official = [...touchedOfficial.values()];
+      // Estimates and official fires first, so the merge ledger's keys exist.
+      await this.store.upsertIncidents([...mergedEstimates, ...official]);
+      for (const r of records) await this.store.recordMerge(r);
+      for (const f of official) {
+        const track = this.tracks.get(f.id);
+        if (track) track.signature = signatureOf(f);
+        this.lastPublished.set(f.id, signatureOf(f));
+        this.lastPersisted.set(f.id, signatureOf(f));
+      }
+      if (this.cache) await this.cache.upsertIncidents(official);
       // official features must be re-published with the precursor attached
-      this.pendingOfficialUpserts.push(...touchedOfficial);
+      this.pendingOfficialUpserts.push(...official);
     }
 
     if (removed.length > 0) {
@@ -695,6 +718,7 @@ export class FusionEngine {
     this.unindexTrack(track);
     this.tracks.delete(id);
     this.lastPublished.delete(id);
+    this.lastPersisted.delete(id);
   }
 }
 

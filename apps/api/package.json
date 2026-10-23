@@ -11,7 +11,8 @@
     "test": "vitest run",
     "predev": "pnpm --filter @firepulse/protocol build",
     "prebuild": "pnpm --filter @firepulse/protocol build",
-    "heat-mask:build": "tsx scripts/build-heat-mask.ts"
+    "heat-mask:build": "tsx scripts/build-heat-mask.ts",
+    "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

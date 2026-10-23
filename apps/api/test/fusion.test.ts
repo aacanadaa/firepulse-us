@@ -177,6 +177,12 @@ describe("fusion engine", () => {
 
     expect(merged.removes).toContain(estimate.id);
     expect(merged.merged).toBe(1);
+    // The official fire is re-published with its precursor, not the estimate.
+    const republished = merged.upserts.find((f) => f.id === "official-ridge");
+    expect(republished?.properties.precursor?.estimateId).toBe(estimate.id);
+    expect(merged.upserts.some((f) => f.id === estimate.id)).toBe(false);
+    // The estimate reached the store, marked as merged.
+    expect((await store.incidentById(estimate.id))?.properties.mergedInto).toBe("official-ridge");
     const liveOfficial = engine.incident("official-ridge")!;
     expect(liveOfficial.properties.precursor).toBeTruthy();
     expect(liveOfficial.properties.precursor!.leadTimeMinutes).toBeGreaterThanOrEqual(18);

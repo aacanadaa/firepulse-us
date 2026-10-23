@@ -1,8 +1,13 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import type { IncidentFeature, RawSignal } from "@firepulse/protocol";
 import type { FusionAudit, MergeRecord, OfficialPerimeterRecord, Store } from "./types.js";
 
 const { Pool } = pg;
+
+/** db/migrations, from both src/store (tsx) and dist/store (node). */
+export const MIGRATIONS_DIR = process.env.MIGRATIONS_DIR || fileURLToPath(new URL("../../../../db/migrations/", import.meta.url));
 
 type IncidentRow = {
   id: string;
@@ -58,6 +63,55 @@ export class PostgresStore implements Store {
 
   async init(): Promise<void> {
     await this.pool.query("select 1");
+    await this.migrate();
+  }
+
+  /**
+   * Applies db/migrations/*.sql in name order, once each, each in its own
+   * transaction. A database set up by hand or by the Docker init folder
+   * before this table existed already has 001.
+   */
+  async migrate(dir = MIGRATIONS_DIR): Promise<string[]> {
+    const files = readdirSync(dir)
+      .filter((f) => /^\d+_.+\.sql$/.test(f))
+      .sort();
+    const client = await this.pool.connect();
+    const applied: string[] = [];
+    try {
+      // One API instance migrates at a time.
+      await client.query("select pg_advisory_lock(hashtext('firepulse.migrate'))");
+      await client.query(`create schema if not exists firepulse;
+        create table if not exists firepulse.schema_migration (
+          name text primary key,
+          applied_at timestamptz not null default now()
+        )`);
+      const { rows } = await client.query<{ name: string }>("select name from firepulse.schema_migration");
+      const done = new Set(rows.map((r) => r.name));
+      if (done.size === 0) {
+        const { rows: existing } = await client.query("select to_regclass('firepulse.fire_incident') as t");
+        if (existing[0]?.t && files[0]) {
+          await client.query("insert into firepulse.schema_migration (name) values ($1)", [files[0]]);
+          done.add(files[0]);
+        }
+      }
+      for (const file of files) {
+        if (done.has(file)) continue;
+        await client.query("begin");
+        try {
+          await client.query(readFileSync(`${dir}/${file}`, "utf8"));
+          await client.query("insert into firepulse.schema_migration (name) values ($1)", [file]);
+          await client.query("commit");
+          applied.push(file);
+        } catch (err) {
+          await client.query("rollback");
+          throw new Error(`migration ${file} failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+    } finally {
+      await client.query("select pg_advisory_unlock(hashtext('firepulse.migrate'))").catch(() => undefined);
+      client.release();
+    }
+    return applied;
   }
 
   async ping(): Promise<boolean> {
@@ -211,13 +265,13 @@ export class PostgresStore implements Store {
                 x.merged_into, true, x.agency, x.external_id, x.containment,
                 x.cause, x.county, x.state, x.active_from, x.active_to
            from jsonb_to_recordset($1::jsonb) as x(
-             id uuid, kind text, status text, name text, geom jsonb,
+             id text, kind text, status text, name text, geom jsonb,
              lon double precision, lat double precision,
              confidence numeric, confidence_breakdown jsonb, sources jsonb,
              h3_cells text[], area_sq_km numeric, area_acres numeric, frp real,
              hotspot_count integer, growth_acres_hour real, growth_frp_hour real,
              growth_score real, first_detected_at timestamptz, last_signal_at timestamptz,
-             official_since timestamptz, merged_into uuid, agency text, external_id text,
+             official_since timestamptz, merged_into text, agency text, external_id text,
              containment smallint, cause text, county text, state text,
              active_from timestamptz, active_to timestamptz, evidence jsonb)
          on conflict (id) do update set
@@ -264,7 +318,7 @@ export class PostgresStore implements Store {
       if (evidenceRows.length > 0) {
         await client.query(
           `delete from firepulse.incident_evidence
-            where incident_id = any($1::uuid[])`,
+            where incident_id = any($1::text[])`,
           [incidents.map((f) => f.properties.id)],
         );
         await client.query(
@@ -275,7 +329,7 @@ export class PostgresStore implements Store {
                   x.signal_count, x.contribution, x.effective, x.first_seen,
                   x.last_seen, x.sample
              from jsonb_to_recordset($1::jsonb) as x(
-               incident_id uuid, source text, modality text, signal_count integer,
+               incident_id text, source text, modality text, signal_count integer,
                contribution numeric, effective numeric, first_seen timestamptz,
                last_seen timestamptz, sample text)
            on conflict (incident_id, source) do update set
@@ -303,7 +357,7 @@ export class PostgresStore implements Store {
           set is_active = false,
               active_to = now(),
               status = case when $2 = 'merged' then 'merged'::firepulse.incident_status else status end
-        where id = any($1::uuid[])`,
+        where id = any($1::text[])`,
       [ids, reason],
     );
   }
@@ -338,11 +392,15 @@ export class PostgresStore implements Store {
   }
 
   async insertPerimeter(p: OfficialPerimeterRecord): Promise<void> {
-    const { rows } = await this.pool.query<{ revision: number }>(
-      `select coalesce(max(revision), 0) + 1 as revision
+    const { rows } = await this.pool.query<{ revision: number; unchanged: boolean }>(
+      `select coalesce(max(revision), 0) + 1 as revision,
+              coalesce(bool_or(valid_to is null and published_at = $2::timestamptz), false) as unchanged
          from firepulse.official_perimeter where incident_id = $1`,
-      [p.incidentId],
+      [p.incidentId, p.publishedAt],
     );
+    // WFIGS republishes every incident on every poll; only a new
+    // publication time is a new revision.
+    if (rows[0]?.unchanged) return;
     const revision = rows[0]?.revision ?? 1;
     await this.pool.query(
       `insert into firepulse.official_perimeter

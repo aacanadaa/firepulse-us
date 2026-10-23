@@ -204,10 +204,15 @@ Or point at your own services:
 ```bash
 export DATABASE_URL=postgres://user:pass@localhost:5432/firepulse
 export REDIS_URL=redis://localhost:6379
-psql "$DATABASE_URL" -f db/migrations/001_init.sql
+pnpm db:migrate               # also runs automatically when the API starts
 psql "$DATABASE_URL" -f db/seed/dev_seed.sql
 pnpm dev
 ```
+
+The database needs PostGIS. Migrations in `db/migrations/` apply in order,
+once each, and are tracked in `firepulse.schema_migration`. Set
+`TEST_DATABASE_URL` (a throwaway database, rebuilt by the test) to include
+the Postgres integration test in `pnpm test`.
 
 ### Live feeds
 

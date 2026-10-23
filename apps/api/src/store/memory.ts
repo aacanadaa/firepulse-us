@@ -110,6 +110,11 @@ export class MemoryStore implements Store {
   }
 
   async insertPerimeter(p: OfficialPerimeterRecord): Promise<void> {
+    // WFIGS republishes every incident on every poll; only a new
+    // publication time is a new revision.
+    if (this.perimeterRows.some((r) => r.incidentId === p.incidentId && r.validTo === null && r.publishedAt === p.publishedAt)) {
+      return;
+    }
     // SCD-2: close the previous open revision for this incident.
     for (const row of this.perimeterRows) {
       if (row.incidentId === p.incidentId && row.validTo === null) row.validTo = p.validFrom;
