@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import type maplibregl from "maplibre-gl";
-import type { HotspotFeature, IncidentFeature, SpreadForecast, WindField } from "@firepulse/protocol";
+import {
+  circleRing,
+  type HazardAlertFeature,
+  type HotspotFeature,
+  type IncidentFeature,
+  type SpreadForecast,
+  type WindField,
+} from "@firepulse/protocol";
 import {
   CITY_LABELS,
   MAP_THEMES,
@@ -20,11 +27,14 @@ import {
   estimatedOutlineLayer,
   estimatedZoneLayer,
   h3Layer,
+  hazardLayers,
   hotspotLayers,
   incidentLabelLayer,
   markerLayer,
   officialPickLayer,
+  placeLayers,
   rgba,
+  type MapPlace,
   selectedOutlineLayer,
   spreadLayers,
 } from "@/lib/layers";
@@ -39,6 +49,7 @@ export interface LayerFlags {
   hex: boolean;
   labels: boolean;
   spread: boolean;
+  alerts: boolean;
 }
 
 interface Props {
@@ -52,6 +63,10 @@ interface Props {
   layers: LayerFlags;
   mapType: MapType;
   focusNonce: number;
+  hazards: HazardAlertFeature[];
+  places: MapPlace[];
+  /** Fit the map to a point and radius; a new nonce re-triggers it. */
+  focusArea: { lon: number; lat: number; radiusKm: number; nonce: number } | null;
   onSelect: (id: string | null) => void;
   onViewport: (bbox: [number, number, number, number], zoom: number) => void;
 }
@@ -95,6 +110,9 @@ export default function MapCanvas({
   layers,
   mapType,
   focusNonce,
+  hazards,
+  places,
+  focusArea,
   onSelect,
   onViewport,
 }: Props) {
@@ -403,6 +421,8 @@ export default function MapCanvas({
   const deckLayers = useMemo(() => {
     const now = cursor ?? Date.now();
     return [
+      // Alert areas are context: under the fire data.
+      ...hazardLayers(hazards, layers.alerts, mapType),
       // Below every outline and hotspot.
       ...spreadLayers(spread, layers.spread, mapType, theme),
       officialPickLayer(officialFeatures, layers.official),
@@ -468,6 +488,7 @@ export default function MapCanvas({
         visible: layers.labels,
         theme,
       }),
+      ...placeLayers(places, theme),
     ] as never[];
   }, [
     officialFeatures,
@@ -486,7 +507,10 @@ export default function MapCanvas({
     layers.hex,
     layers.labels,
     layers.spread,
+    layers.alerts,
     spread,
+    hazards,
+    places,
     mapType,
     theme,
   ]);
@@ -556,6 +580,21 @@ export default function MapCanvas({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusNonce]);
+
+  useEffect(() => {
+    if (!map || !focusArea) return;
+    const ring = circleRing(focusArea, focusArea.radiusKm, 32);
+    const lons = ring.map((p) => p[0]);
+    const lats = ring.map((p) => p[1]);
+    map.fitBounds(
+      [
+        [Math.min(...lons), Math.min(...lats)],
+        [Math.max(...lons), Math.max(...lats)],
+      ],
+      { duration: 1000, essential: true, padding: { left: 48, right: 48, top: 56, bottom: 72 }, maxZoom: 13 },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusArea?.nonce, map]);
 
   const mapName = MAP_TYPES.find((t) => t.id === mapType)?.name ?? "Atlas";
   const lat = coords[1];

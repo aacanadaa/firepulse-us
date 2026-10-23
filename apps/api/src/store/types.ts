@@ -46,7 +46,8 @@ export interface Store {
   init(): Promise<void>;
   ping(): Promise<boolean>;
 
-  insertSignals(signals: RawSignal[]): Promise<number>;
+  /** Returns the signals that were new; duplicates are skipped. */
+  insertSignals(signals: RawSignal[]): Promise<RawSignal[]>;
   recentSignals(sinceMs: number, untilMs?: number): Promise<RawSignal[]>;
   signalsForIncident(id: string, limit?: number): Promise<RawSignal[]>;
   purgeSignals(olderThan: Date): Promise<number>;

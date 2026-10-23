@@ -20,6 +20,8 @@ export const SOURCE_IDS = [
   // Tier 2 — satellite thermal
   "goes16",
   "goes18",
+  // GOES-East since April 2025 (replaced GOES-16).
+  "goes19",
   "viirs",
   "modis",
   // Tier 3 — environmental context
@@ -67,6 +69,12 @@ export interface SourceProfile {
   weight: number;
   /** Evidence half-life in minutes (how fast this signal loses weight). */
   halfLifeMin: number;
+  /**
+   * How long after observation a signal still counts as evidence for a
+   * current estimate. Polar orbiters revisit about twice a day and arrive
+   * hours late, so their window is far longer than a dispatch call's.
+   */
+  windowMin: number;
   /** Whether a signal of this source can independently seed an incident. */
   detector: boolean;
   color: string;
@@ -151,12 +159,17 @@ export type IncidentStatus =
   | "contained"
   | "merged";
 
+export type EstimateConfirmation = "single" | "persistent" | "corroborated";
+
 export type FireCause =
   | "vehicle"
   | "powerline"
   | "lightning"
   | "structure"
   | "vegetation"
+  | "human"
+  /** A planned, permitted burn (WFIGS incident type RX). */
+  | "prescribed"
   | "unknown";
 
 export interface IncidentProperties {
@@ -193,6 +206,14 @@ export interface IncidentProperties {
   };
   /** Present only on estimates that were absorbed by an official incident. */
   mergedInto?: string;
+  /**
+   * Estimates only. "single": one satellite pass and one kind of evidence,
+   * which is usually a farm or industrial burn; "persistent": heat in passes
+   * at least 6 h apart; "corroborated": two independent kinds of detection
+   * (e.g. satellite and dispatch). Only confirmed estimates reach the
+   * household view and alerts.
+   */
+  confirmation?: EstimateConfirmation;
   /** ISO time the official perimeter/incident was first published. */
   officialSince?: string;
   containment?: number;
@@ -247,6 +268,194 @@ export interface HotspotFeature {
 }
 
 /* ------------------------------------------------------------------ */
+/* Hazard alerts (NWS / IPAWS)                                          */
+/* ------------------------------------------------------------------ */
+
+/** The NWS events FirePulse follows, most urgent first. */
+export const HAZARD_EVENTS = [
+  "Evacuation Immediate",
+  "Fire Warning",
+  "Extreme Fire Danger",
+  "Red Flag Warning",
+  "Fire Weather Watch",
+  "Air Quality Alert",
+  "Dense Smoke Advisory",
+] as const;
+
+export type HazardEvent = (typeof HAZARD_EVENTS)[number];
+
+export interface MultiPolygonGeometry {
+  type: "MultiPolygon";
+  coordinates: Ring[][];
+}
+
+export interface HazardAlertProperties {
+  /** NWS alert id (a CAP URN). */
+  id: string;
+  event: HazardEvent;
+  severity: string;
+  urgency: string;
+  headline?: string;
+  description?: string;
+  /** What people in the area are told to do (evacuate, avoid burning, ...). */
+  instruction?: string;
+  areaDesc: string;
+  sender: string;
+  sent: string;
+  effective: string;
+  expires: string;
+  ends?: string;
+  /** Link to the full alert on api.weather.gov. */
+  url: string;
+}
+
+export interface HazardAlertFeature {
+  type: "Feature";
+  id: string;
+  geometry: PolygonGeometry | MultiPolygonGeometry;
+  properties: HazardAlertProperties;
+}
+
+/* ------------------------------------------------------------------ */
+/* Near a place                                                         */
+/* ------------------------------------------------------------------ */
+
+export interface NearbyFire {
+  id: string;
+  name: string;
+  kind: IncidentKind;
+  status: IncidentStatus;
+  cause?: FireCause;
+  /** Distance from the place to the fire's mapped edge, km; 0 when inside. */
+  distanceKm: number;
+  /** Bearing from the place to the fire, degrees, and its compass name. */
+  bearingDeg: number;
+  direction: string;
+  areaAcres: number;
+  containment?: number;
+  confidence: number;
+  growthAcresPerHour: number;
+  firstDetectedAt: string;
+  updatedAt: string;
+  officialSince?: string;
+  state?: string;
+  county?: string;
+  confirmation?: EstimateConfirmation;
+  /** The latest next-day forecast from this place, when one has run. */
+  outlook?: SpreadOutlook;
+  /** The fire's centroid. */
+  lat: number;
+  lon: number;
+}
+
+/** One air monitor's latest PM2.5 reading (EPA AirNow). */
+export interface AirQualityReading {
+  site: string;
+  siteName: string;
+  agency: string;
+  lat: number;
+  lon: number;
+  parameter: "PM2.5";
+  aqi: number;
+  /** EPA category: Good, Moderate, Unhealthy for sensitive groups, ... */
+  category: string;
+  observedAt: string;
+}
+
+/** Everything relevant to one point: nearby fires and alerts covering it. */
+export interface NearbySummary {
+  lat: number;
+  lon: number;
+  radiusKm: number;
+  generatedAt: string;
+  /** Official fires and confirmed estimates, nearest first. */
+  fires: NearbyFire[];
+  /**
+   * Satellite heat seen in one pass only, not yet confirmed: usually a farm
+   * or industrial burn. Counted, not listed.
+   */
+  unconfirmedHeat: number;
+  /** Alerts whose area contains the point, most urgent first. */
+  alerts: HazardAlertProperties[];
+  /** The nearest air monitor within 40 km, when one reported recently. */
+  airQuality?: AirQualityReading & { distanceKm: number };
+}
+
+/** A geocoded place a person can watch. */
+export interface GeocodeResult {
+  label: string;
+  lat: number;
+  lon: number;
+  source: "census" | "photon";
+}
+
+/* ------------------------------------------------------------------ */
+/* Accounts and alerts                                                  */
+/* ------------------------------------------------------------------ */
+
+/** What a person can be alerted about, most urgent first. */
+export const ALERT_KINDS = ["evacuation", "fire_warning", "new_fire", "fire_closer", "fire_weather", "spread"] as const;
+export type AlertKind = (typeof ALERT_KINDS)[number];
+
+/** urgent ignores quiet hours; warning and info wait for them to end. */
+export type AlertSeverity = "urgent" | "warning" | "info";
+
+export interface AccountSettings {
+  alertKinds: AlertKind[];
+  /** Minutes after local midnight; both null means no quiet hours. */
+  quietStartMin: number | null;
+  quietEndMin: number | null;
+  /** IANA zone the quiet hours are in. */
+  timezone: string;
+}
+
+export interface AccountUser {
+  id: string;
+  username: string;
+  displayName?: string;
+  hasPassword: boolean;
+  google: boolean;
+  settings: AccountSettings;
+}
+
+export interface AccountPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radiusKm: number;
+}
+
+export interface AuthState {
+  user: AccountUser | null;
+  googleEnabled: boolean;
+  /** VAPID public key for this server's push subscriptions. */
+  pushPublicKey: string | null;
+}
+
+export interface AlertItem {
+  id: number;
+  kind: AlertKind;
+  severity: AlertSeverity;
+  title: string;
+  body: string;
+  url: string;
+  placeId: string;
+  createdAt: string;
+  status: "pending" | "sent" | "no_device" | "failed" | "suppressed" | "baseline";
+}
+
+/** The JSON a push message carries to the service worker. */
+export interface PushPayload {
+  title: string;
+  body: string;
+  url: string;
+  /** Replaces an earlier notification with the same tag. */
+  tag: string;
+  severity: AlertSeverity;
+}
+
+/* ------------------------------------------------------------------ */
 /* Wind field                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -284,6 +493,8 @@ export interface FeedStats {
   fusionRuns: number;
   lastFusionMs: number;
   clients: number;
+  /** Upstream feed health; absent when the server doesn't track it. */
+  sources?: SourceHealth[];
 }
 
 export interface ViewQuery {
@@ -317,6 +528,8 @@ export type ServerMessage =
       hotspots: HotspotFeature[];
       wind: WindField | null;
       stats: FeedStats;
+      /** Active hazard alerts intersecting the viewport. */
+      hazards?: HazardAlertFeature[];
       /** true when the payload was truncated to the viewport budget */
       truncated?: boolean;
     }
@@ -330,12 +543,36 @@ export type ServerMessage =
       hotspotsRemove: string[];
       stats: FeedStats;
       wind?: WindField;
+      hazardsUpsert?: HazardAlertFeature[];
+      hazardsRemove?: string[];
     }
   | { type: "stats"; seq: number; serverTime: string; stats: FeedStats }
   | { type: "pong"; t: number; serverTime: string };
 
+/** One upstream feed's state, as shown in the UI and /api/health. */
+export interface SourceHealth {
+  id: string;
+  label: string;
+  kind: "signals" | "official" | "hazards" | "wind";
+  intervalMs: number;
+  /**
+   * pending: no successful poll yet; ok: polled on schedule; stale: no
+   * success for three intervals; error: the latest poll failed.
+   */
+  status: "pending" | "ok" | "stale" | "error";
+  lastSuccessAt?: string;
+  lastErrorAt?: string;
+  lastError?: string;
+  /** Newest observation in the latest successful poll (e.g. a satellite pass). */
+  lastObservedAt?: string;
+  /** Records returned by the latest successful poll. */
+  lastCount?: number;
+  warnings?: string[];
+}
+
 export interface PublicConfig {
   fusionRadiusKm: number;
+  /** Longest per-source evidence window (polar-orbiting thermal). */
   fusionWindowMin: number;
   hotspotRetentionHours: number;
   officialReveal: boolean;
@@ -425,6 +662,19 @@ export interface SpreadForecast {
   model?: { name: string; run: string; testAucPr: number };
   /** True for simulator incidents. */
   demo?: boolean;
+}
+
+/** A next-day forecast seen from one place, distances in km. */
+export interface SpreadOutlook {
+  generatedAt: string;
+  /** Nearest cell burning today; null when the window has none. */
+  todayKm: number | null;
+  /** Nearest new cell at or above the "likely" band. */
+  likelyKm: number | null;
+  /** Nearest new cell at or above the "very likely" band. */
+  veryLikelyKm: number | null;
+  /** Likely growth comes at least 1 km closer than today's fire. */
+  toward: boolean;
 }
 
 /** Display bands for spread scores. Never show scores as percentages. */

@@ -32,5 +32,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/apps/api ./apps/api
 COPY --from=build /app/package.json /app/pnpm-workspace.yaml ./
+# The API applies db/migrations at startup.
+COPY db ./db
 EXPOSE 8790
 CMD ["node", "apps/api/dist/index.js"]

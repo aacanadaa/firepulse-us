@@ -5,6 +5,8 @@ import type { FeedStatus } from "@/lib/store";
 import { MAP_THEMES, MAP_TYPES, type MapType } from "@/lib/places";
 import type { LayerFlags } from "./MapCanvas";
 import { thermalSwatches } from "@/lib/layers";
+import { formatMinutes } from "@/lib/format";
+import { SourceHealthList } from "./SourceHealth";
 import { Icon } from "./ui";
 
 interface Props {
@@ -23,6 +25,9 @@ interface Props {
   medianLead: number | null;
   mergeCount: number;
   config: PublicConfig | null;
+  now: number;
+  /** Sign-in / alerts button. */
+  accountSlot?: React.ReactNode;
 }
 
 const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
@@ -30,6 +35,7 @@ const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
   { key: "estimated", label: "Early estimates", note: "Fused active fire zones" },
   { key: "thermal", label: "Thermal detections", note: "GOES, VIIRS, MODIS" },
   { key: "spread", label: "Spread forecast", note: "Selected fire, next day · experimental" },
+  { key: "alerts", label: "Warnings and alerts", note: "NWS evacuation, fire weather, smoke" },
   { key: "wind", label: "Wind field", note: "Particle advection" },
   { key: "hex", label: "H3 cells", note: "Resolution 8 identity grid" },
   { key: "labels", label: "Place and fire labels", note: "States, cities, incidents" },
@@ -67,6 +73,8 @@ export default function AppHeader({
   medianLead,
   mergeCount,
   config,
+  now,
+  accountSlot,
 }: Props) {
   const theme = MAP_THEMES[mapType];
   const type = MAP_TYPES.find((t) => t.id === mapType);
@@ -143,6 +151,8 @@ export default function AppHeader({
             </button>
           ))}
         </div>
+
+        {accountSlot}
 
         <div style={{ position: "relative" }}>
           <button
@@ -255,6 +265,20 @@ export default function AppHeader({
                     </span>
                     <span>Wind · direction and relative speed</span>
                   </div>
+                  <div className="legend-row">
+                    <span
+                      className="legend-swatch"
+                      style={{ border: "1.5px solid var(--danger)", background: "rgba(185, 28, 28, 0.13)" }}
+                    />
+                    <span>Evacuation order or fire warning</span>
+                  </div>
+                  <div className="legend-row">
+                    <span
+                      className="legend-swatch"
+                      style={{ border: "1px dashed var(--warn)", background: "rgba(180, 83, 9, 0.06)" }}
+                    />
+                    <span>Red flag or fire weather · smoke in grey</span>
+                  </div>
                 </div>
 
                 <div className="pop-section">
@@ -267,6 +291,21 @@ export default function AppHeader({
                   </div>
                 </div>
 
+                {stats?.sources && stats.sources.length > 0 ? (
+                  <div className="pop-section">
+                    <div className="kicker" style={{ marginBottom: 8 }}>
+                      Data sources
+                    </div>
+                    <SourceHealthList sources={stats.sources} now={now} />
+                  </div>
+                ) : null}
+
+                <div className="pop-section legal-links">
+                  <a href="/about">About &amp; data sources</a>
+                  <a href="/privacy">Privacy</a>
+                  <a href="/terms">Terms</a>
+                </div>
+
                 <div className="pop-section">
                   <div className="kicker" style={{ marginBottom: 8 }}>
                     Pipeline
@@ -275,7 +314,7 @@ export default function AppHeader({
                     <span>Fusion radius</span>
                     <span className="v">{config?.fusionRadiusKm ?? 2} km</span>
                     <span>Evidence window</span>
-                    <span className="v">{config?.fusionWindowMin ?? 30} min</span>
+                    <span className="v">up to {formatMinutes(config?.fusionWindowMin ?? 1800)}</span>
                     <span>H3 resolution</span>
                     <span className="v">r{config?.h3Resolution ?? 8}</span>
                     <span>Ingest rate</span>

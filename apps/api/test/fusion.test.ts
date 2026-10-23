@@ -15,7 +15,6 @@ const log = pino({ level: "silent" });
 const cfg = {
   fusion: {
     radiusKm: 2,
-    windowMin: 30,
     minPoints: 1,
     intervalMs: 4000,
     minHotspots: 1,
@@ -178,6 +177,12 @@ describe("fusion engine", () => {
 
     expect(merged.removes).toContain(estimate.id);
     expect(merged.merged).toBe(1);
+    // The official fire is re-published with its precursor, not the estimate.
+    const republished = merged.upserts.find((f) => f.id === "official-ridge");
+    expect(republished?.properties.precursor?.estimateId).toBe(estimate.id);
+    expect(merged.upserts.some((f) => f.id === estimate.id)).toBe(false);
+    // The estimate reached the store, marked as merged.
+    expect((await store.incidentById(estimate.id))?.properties.mergedInto).toBe("official-ridge");
     const liveOfficial = engine.incident("official-ridge")!;
     expect(liveOfficial.properties.precursor).toBeTruthy();
     expect(liveOfficial.properties.precursor!.leadTimeMinutes).toBeGreaterThanOrEqual(18);
@@ -233,5 +238,135 @@ describe("fusion engine", () => {
     expect(engine.view(bbox, { at: iso(25 * 60_000) })).toHaveLength(0);
     expect(engine.view(bbox, { at: iso(15 * 60_000) }).length).toBe(1);
     expect(engine.view(bbox, { at: iso(0) }).length).toBe(1);
+  });
+
+  describe("per-source evidence windows", () => {
+    const HOUR = 3_600_000;
+
+    it("builds an estimate from VIIRS detections that arrived hours after the pass", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "v1", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(3 * HOUR) }),
+        signal({ id: "v2", source: "viirs", lon: -120.503, lat: 38.201, observedAt: iso(3 * HOUR) }),
+      ]);
+      const result = await engine.run(NOW);
+      expect(result.upserts).toHaveLength(1);
+      expect(result.upserts[0]!.properties.hotspotCount).toBe(2);
+      expect(result.upserts[0]!.properties.firstDetectedAt).toBe(iso(3 * HOUR));
+    });
+
+    it("keeps one ID across a twelve-hour gap between satellite passes", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "day", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(14 * HOUR) }),
+      ]);
+      const first = await engine.run(NOW - 12 * HOUR);
+      expect(first.upserts).toHaveLength(1);
+
+      await store.insertSignals([
+        signal({ id: "night", source: "viirs", lon: -120.502, lat: 38.2, observedAt: iso(2 * HOUR) }),
+      ]);
+      const second = await engine.run(NOW);
+      expect(second.removes).toHaveLength(0);
+      expect(engine.incident(first.upserts[0]!.id)?.properties.hotspotCount).toBe(2);
+    });
+
+    it("ignores VIIRS older than its window and CAD older than an hour and a half", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "old-viirs", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(31 * HOUR) }),
+        signal({ id: "old-cad", source: "cad", lon: -119.31, lat: 34.48, observedAt: iso(2 * HOUR) }),
+      ]);
+      const result = await engine.run(NOW);
+      expect(result.upserts).toHaveLength(0);
+    });
+
+    it("expires an estimate once its evidence has aged out and the grace period passes", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "v1", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(0) }),
+      ]);
+      const first = await engine.run(NOW);
+      const id = first.upserts[0]!.id;
+
+      // Still inside the 30 h window: kept, with lower freshness.
+      const later = await engine.run(NOW + 29.9 * HOUR);
+      expect(later.removes).toHaveLength(0);
+      expect(engine.incident(id)!.properties.confidenceBreakdown.freshness).toBeLessThan(
+        first.upserts[0]!.properties.confidenceBreakdown.freshness,
+      );
+
+      // Out of the window, but last seen less than the grace period ago.
+      const grace = await engine.run(NOW + 30.2 * HOUR);
+      expect(grace.removes).toHaveLength(0);
+
+      const gone = await engine.run(NOW + 29.9 * HOUR + (cfg.fusion.ttlMin + 1) * 60_000);
+      expect(gone.removes).toContain(id);
+      expect(engine.incident(id)).toBeNull();
+    });
+  });
+
+  describe("official incidents that leave the feed", () => {
+    const official = (i: number) =>
+      officialFeature({
+        id: `wfigs-${i}`,
+        name: `Fire ${i}`,
+        lon: -120 + i * 0.5,
+        lat: 40,
+        firstDetectedAt: iso(3_600_000),
+        officialSince: iso(3_600_000),
+      });
+
+    it("retires official incidents missing from a complete snapshot", async () => {
+      const engine = new FusionEngine(new MemoryStore(), cfg, log);
+      await engine.ingestOfficial([official(1), official(2), official(3)], []);
+      const gone = await engine.retireOfficial(new Set(["wfigs-1", "wfigs-2"]), "wfigs-");
+      expect(gone).toEqual(["wfigs-3"]);
+      expect(engine.incident("wfigs-3")).toBeNull();
+      expect(engine.incident("wfigs-1")).not.toBeNull();
+    });
+
+    it("ignores a snapshot that lost most incidents at once", async () => {
+      const engine = new FusionEngine(new MemoryStore(), cfg, log);
+      await engine.ingestOfficial(Array.from({ length: 12 }, (_, i) => official(i)), []);
+      expect(await engine.retireOfficial(new Set(["wfigs-0"]), "wfigs-")).toEqual([]);
+      expect(engine.counts().official).toBe(12);
+    });
+  });
+
+  it("keeps official fires and confirmed estimates when the snapshot budget is tight", async () => {
+    const store = new MemoryStore();
+    const engine = new FusionEngine(store, cfg, log);
+    // 20 single-pass clusters, created first.
+    await store.insertSignals(
+      Array.from({ length: 20 }, (_, i) =>
+        signal({ id: `heat${i}`, source: "viirs", lon: -100 + i * 0.5, lat: 35, observedAt: iso(3_600_000) }),
+      ),
+    );
+    await engine.run(NOW);
+    await engine.ingestOfficial(
+      [officialFeature({ id: "official-late", name: "Late", lon: -90, lat: 40, firstDetectedAt: iso(7_200_000), officialSince: iso(3_600_000) })],
+      [],
+    );
+    const view = engine.view([-130, 20, -60, 55], { limit: 5 });
+    expect(view).toHaveLength(5);
+    expect(view[0]!.id).toBe("official-late");
+  });
+
+  it("expires restored estimates whose evidence is older than any window", async () => {
+    const store = new MemoryStore();
+    const first = new FusionEngine(store, cfg, log);
+    await store.insertSignals([signal({ id: "old", source: "viirs", lon: -120, lat: 39, observedAt: iso(0) })]);
+    const id = (await first.run(NOW)).upserts[0]!.id;
+
+    // Two days later a restarted engine loads it from the store.
+    const later = NOW + 48 * 3_600_000;
+    const restarted = new FusionEngine(store, cfg, log);
+    await restarted.hydrate(later);
+    expect((await restarted.run(later)).removes).toContain(id);
   });
 });

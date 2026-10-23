@@ -11,5 +11,9 @@ screenshots
 *.tsbuildinfo
 Claude.md
 
+# Python virtualenvs and caches
+.venv
+__pycache__
+
 # Spread model + static layers (large; see README "Spread forecasts")
 apps/api/assets/

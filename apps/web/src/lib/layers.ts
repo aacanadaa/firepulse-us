@@ -2,8 +2,19 @@ import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/l
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import { gridDisk, latLngToCell } from "h3-js";
-import { SPREAD_BANDS, type HotspotFeature, type IncidentFeature, type SpreadCell, type SpreadForecast } from "@firepulse/protocol";
+import {
+  circleRing,
+  SPREAD_BANDS,
+  type HazardAlertFeature,
+  type HazardEvent,
+  type HotspotFeature,
+  type IncidentFeature,
+  type Ring,
+  type SpreadCell,
+  type SpreadForecast,
+} from "@firepulse/protocol";
 import { ageBucket } from "./select";
+import { hazardTier, type HazardTier } from "./format";
 import type { MapTheme, MapType } from "./places";
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +157,15 @@ export function hotspotLayers(opts: {
 
 const dashExtension = new PathStyleExtension({ dash: true });
 
+/** Single-pass satellite heat is usually a farm or industrial burn: drawn faint, never pulsing. */
+function unconfirmed(f: IncidentFeature): boolean {
+  return f.properties.kind === "estimated" && f.properties.confirmation === "single";
+}
+
+function withAlpha(color: RGBA, alpha: number): RGBA {
+  return [color[0], color[1], color[2], alpha];
+}
+
 export function estimatedZoneLayer(
   incidents: IncidentFeature[],
   visible: boolean,
@@ -158,8 +178,12 @@ export function estimatedZoneLayer(
     pickable: true,
     filled: true,
     getPolygon: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getFillColor: rgba(theme.estimatedFill),
+    getFillColor: (f: IncidentFeature) => {
+      const fill = rgba(theme.estimatedFill);
+      return unconfirmed(f) ? withAlpha(fill, Math.round(fill[3] * 0.4)) : fill;
+    },
     stroked: false,
+    updateTriggers: { getFillColor: theme.estimatedFill },
   });
 }
 
@@ -197,13 +221,8 @@ export function estimatedOutlineLayer(
     visible,
     pickable: false,
     getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getColor: [
-      ...(theme.estimated
-        .replace("#", "")
-        .match(/.{2}/g)
-        ?.map((h) => parseInt(h, 16)) ?? [255, 79, 0]),
-      150 + Math.round(pulse * 90),
-    ] as RGBA,
+    getColor: (f: IncidentFeature) =>
+      withAlpha(rgba(theme.estimated), unconfirmed(f) ? 90 : 150 + Math.round(pulse * 90)),
     widthUnits: "pixels",
     getWidth: 1.4,
     widthMinPixels: 1.1,
@@ -211,7 +230,7 @@ export function estimatedOutlineLayer(
     capRounded: false,
     getDashArray: [5, 3],
     extensions: [dashExtension],
-    updateTriggers: { getColor: Math.round(pulse * 10) },
+    updateTriggers: { getColor: [Math.round(pulse * 10), theme.estimated] },
   } as never);
 }
 
@@ -230,14 +249,15 @@ export function markerLayer(
     radiusUnits: "pixels",
     radiusMinPixels: 2.8,
     radiusMaxPixels: 6,
-    getRadius: estimated ? 4 : 3.4,
+    getRadius: (f: IncidentFeature) => (unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4),
     // Estimates are rings; official points are filled. This keeps the
     // provisional marker distinguishable from a thermal speck at any zoom.
     filled: !estimated,
     stroked: true,
-    getLineColor: rgba(estimated ? theme.estimated : theme.markerStroke),
+    getLineColor: (f: IncidentFeature) =>
+      unconfirmed(f) ? withAlpha(rgba(theme.estimated), 70) : rgba(estimated ? theme.estimated : theme.markerStroke),
     lineWidthUnits: "pixels",
-    getLineWidth: estimated ? 1.6 : 1.2,
+    getLineWidth: (f: IncidentFeature) => (unconfirmed(f) ? 1 : estimated ? 1.6 : 1.2),
     getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],
     getFillColor: rgba(theme.official),
   });
@@ -280,7 +300,8 @@ export function incidentLabelLayer(
 ) {
   const { selectedId, zoom, visible, theme } = opts;
 
-  const ranked = [...incidents].sort((a, b) => {
+  // Unconfirmed satellite heat is too common to label; it's named when selected.
+  const ranked = incidents.filter((f) => f.id === selectedId || !unconfirmed(f)).sort((a, b) => {
     if (a.id === selectedId) return -1;
     if (b.id === selectedId) return 1;
     const kindDelta =
@@ -459,5 +480,127 @@ export function spreadLayers(
       getDashArray: [4, 4],
       extensions: [dashExtension],
     } as never),
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Hazard alerts (NWS)                                                  */
+/* ------------------------------------------------------------------ */
+
+
+/** Same hues as --danger / --warn; brighter on the dark plates. */
+function hazardColor(tier: HazardTier, mapType: MapType): string {
+  const dark = mapType === "ink" || mapType === "sat";
+  if (tier === "act") return dark ? "#f87171" : "#b91c1c";
+  if (tier === "weather") return dark ? "#f59e0b" : "#b45309";
+  return dark ? "#a3a3a3" : "#6b6b6b";
+}
+
+interface HazardOutline {
+  path: Ring;
+  tier: HazardTier;
+}
+
+interface HazardPolygon {
+  id: string;
+  event: HazardEvent;
+  tier: HazardTier;
+  rings: Ring[];
+}
+
+function hazardPolygons(alerts: HazardAlertFeature[]): HazardPolygon[] {
+  const out: HazardPolygon[] = [];
+  for (const a of alerts) {
+    const polygons = a.geometry.type === "Polygon" ? [a.geometry.coordinates] : a.geometry.coordinates;
+    polygons.forEach((rings, i) => out.push({ id: `${a.id}:${i}`, event: a.properties.event, tier: hazardTier(a.properties.event), rings }));
+  }
+  // Draw conditions first so evacuation areas sit on top.
+  const order: Record<HazardTier, number> = { smoke: 0, weather: 1, act: 2 };
+  return out.sort((x, y) => order[x.tier] - order[y.tier]);
+}
+
+export function hazardLayers(alerts: HazardAlertFeature[], visible: boolean, mapType: MapType) {
+  const data = visible ? hazardPolygons(alerts) : [];
+  return [
+    new PolygonLayer<HazardPolygon>({
+      id: "hazard-fill",
+      data,
+      pickable: false,
+      filled: true,
+      stroked: false,
+      getPolygon: (d) => d.rings,
+      getFillColor: (d) => rgba(hazardColor(d.tier, mapType), d.tier === "act" ? 34 : 14),
+      updateTriggers: { getFillColor: mapType },
+    }),
+    new PathLayer<HazardOutline>({
+      id: "hazard-outline",
+      data: data.flatMap((d) => d.rings.slice(0, 1).map((path) => ({ path, tier: d.tier }))),
+      pickable: false,
+      getPath: (d: HazardOutline) => d.path,
+      getColor: (d: HazardOutline) => rgba(hazardColor(d.tier, mapType), d.tier === "act" ? 230 : 170),
+      widthUnits: "pixels",
+      getWidth: (d: HazardOutline) => (d.tier === "act" ? 1.6 : 1),
+      // Conditions are dashed; areas told to act are solid.
+      getDashArray: (d: HazardOutline) => (d.tier === "act" ? [0, 0] : [5, 3]),
+      extensions: [dashExtension],
+      updateTriggers: { getColor: mapType },
+    } as never),
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Watched places                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface MapPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radiusKm: number;
+}
+
+export function placeLayers(places: MapPlace[], theme: MapTheme) {
+  return [
+    new PathLayer<{ path: Ring }>({
+      id: "place-radius",
+      data: places.map((p) => ({ path: circleRing(p, p.radiusKm, 72) })),
+      pickable: false,
+      getPath: (d: { path: Ring }) => d.path,
+      getColor: rgba(theme.labelText, 150),
+      widthUnits: "pixels",
+      getWidth: 1,
+      getDashArray: [2, 3],
+      extensions: [dashExtension],
+    } as never),
+    new ScatterplotLayer<MapPlace>({
+      id: "place-marker",
+      data: places,
+      pickable: false,
+      getPosition: (p) => [p.lon, p.lat],
+      getRadius: 4.5,
+      radiusUnits: "pixels",
+      stroked: true,
+      getFillColor: rgba(theme.labelBg, 255),
+      getLineColor: rgba(theme.labelText, 255),
+      lineWidthUnits: "pixels",
+      getLineWidth: 1.5,
+    }),
+    new TextLayer<MapPlace>({
+      id: "place-label",
+      data: places,
+      pickable: false,
+      getPosition: (p) => [p.lon, p.lat],
+      getText: (p) => p.name,
+      getSize: 10,
+      getColor: rgba(theme.labelText, 255),
+      getPixelOffset: [0, -14],
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      fontWeight: 600,
+      characterSet: "auto",
+      outlineWidth: 1.2,
+      outlineColor: rgba(theme.labelOutline, 220),
+      fontSettings: { sdf: true, buffer: 6, radius: 4 },
+    }),
   ];
 }

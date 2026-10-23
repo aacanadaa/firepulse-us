@@ -2,13 +2,24 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { RawSignal } from "@firepulse/protocol";
+import { SOURCE_PROFILES, type RawSignal } from "@firepulse/protocol";
 import type { AppConfig } from "./config.js";
 import type { Store } from "./store/types.js";
 import type { RedisCache } from "./store/redis.js";
 import type { FusionEngine } from "./fusion/engine.js";
 import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
+import type { HazardLayer } from "./realtime/hazards.js";
+import { Geocoder } from "./geocode.js";
+import { registerAccountRoutes } from "./accounts/routes.js";
+import type { AccountStore } from "./accounts/types.js";
+import type { AlertEngine } from "./notify/engine.js";
+import type { PushSender } from "./notify/outbox.js";
+import type { SpreadScheduler } from "./spread/scheduler.js";
+import { forecastOutlook } from "./spread/relevance.js";
+import type { AirQualityLayer } from "./sources/airnow.js";
+import { NEARBY_MAX_RADIUS_KM, nearbySummary } from "./nearby.js";
+import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
 import type { FireSimulation } from "./simulation/generator.js";
 import type { SpreadRuntime } from "./spread/index.js";
@@ -24,6 +35,13 @@ export interface ServerDeps {
   pipeline: Pipeline;
   simulation: FireSimulation | null;
   spread: SpreadRuntime;
+  hazards: HazardLayer;
+  health: SourceHealthBoard;
+  accounts: AccountStore;
+  alerts: AlertEngine;
+  sender: PushSender | null;
+  spreadScheduler: SpreadScheduler;
+  airQuality: AirQualityLayer;
   log: Logger;
   startedAt: number;
 }
@@ -37,6 +55,22 @@ function parseBBox(raw: unknown): [number, number, number, number] | null {
   return [Math.min(a, c), Math.min(b, d), Math.max(a, c), Math.max(b, d)];
 }
 
+/** Requests allowed per client per minute, for routes that call third parties. */
+function perMinuteLimiter(limit: number): (key: string, now?: number) => boolean {
+  const hits = new Map<string, number[]>();
+  return (key, now = Date.now()) => {
+    const recent = (hits.get(key) ?? []).filter((t) => t > now - 60_000);
+    if (recent.length >= limit) {
+      hits.set(key, recent);
+      return false;
+    }
+    recent.push(now);
+    hits.set(key, recent);
+    if (hits.size > 10_000) hits.clear();
+    return true;
+  };
+}
+
 function bucket(count: number): string {
   if (count === 0) return "0";
   if (count < 10) return "1-9";
@@ -46,16 +80,41 @@ function bucket(count: number): string {
 }
 
 export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof Fastify>> {
-  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, spread, log } = deps;
+  const { config, store, cache, engine, hub, hotspots, pipeline, simulation, spread, hazards, health, log } = deps;
 
   const app = Fastify({
     loggerInstance: log,
     bodyLimit: 512 * 1024,
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     disableRequestLogging: true,
   });
 
-  await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST"] });
+  // Webhook signatures cover the exact bytes sent, so keep the raw body.
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    (req as typeof req & { rawBody?: string }).rawBody = body as string;
+    if (body === "") return done(null, {});
+    try {
+      done(null, JSON.parse(body as string));
+    } catch {
+      done(Object.assign(new Error("invalid JSON"), { statusCode: 400 }), undefined);
+    }
+  });
+
+  // A plain per-client budget for the whole HTTP API; health checks are exempt.
+  const withinBudget = perMinuteLimiter(config.rateLimitPerMinute);
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.url === "/api/health" || req.url.startsWith("/ws")) return;
+    if (!withinBudget(req.ip)) return reply.code(429).header("retry-after", "60").send({ error: "too many requests" });
+  });
+
+  // Baseline security headers for API responses.
+  app.addHook("onSend", async (_req, reply) => {
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("referrer-policy", "strict-origin-when-cross-origin");
+  });
+
+  await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
   await app.register(websocket, {
     options: {
       maxPayload: 256 * 1024,
@@ -80,6 +139,9 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       "/api/v1/stats",
       "/api/v1/merges",
       "/api/v1/wind",
+      "/api/v1/alerts",
+      "/api/v1/nearby",
+      "/api/v1/geocode",
       "/ws",
     ],
   }));
@@ -95,6 +157,8 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       simulated: config.simulated,
       clients: hub.clientCount,
       spread: spread.health(),
+      sources: health.snapshot(),
+      hazards: hazards.count,
     });
   });
 
@@ -203,6 +267,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     clearTimeout(timer);
     if (result === "wait") return reply.code(202).send({ incidentId: incident.id, status: "computing" });
     if (!result) return reply.code(404).send({ error: "incident not found" });
+    deps.spreadScheduler.remember(result);
     return result;
   });
 
@@ -268,9 +333,43 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     };
   });
 
+  app.get<{ Querystring: { lat?: string; lon?: string; radiusKm?: string } }>("/api/v1/nearby", async (req, reply) => {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) {
+      return reply.code(400).send({ error: "lat and lon are required" });
+    }
+    const radiusKm = Math.min(NEARBY_MAX_RADIUS_KM, Math.max(1, Number(req.query.radiusKm ?? 25) || 25));
+    return nearbySummary({ lat, lon }, radiusKm, engine.allIncidents(), hazards, Date.now(), (id, point) => {
+      const forecast = deps.spreadScheduler.latest(id);
+      return (forecast && forecastOutlook(forecast, point)) ?? undefined;
+    }, deps.airQuality);
+  });
+
+  const geocoder = new Geocoder({ userAgent: config.userAgent });
+  const geocodeAllowed = perMinuteLimiter(30);
+  app.get<{ Querystring: { q?: string } }>("/api/v1/geocode", async (req, reply) => {
+    const q = String(req.query.q ?? "");
+    if (q.trim().length < 3) return { results: [] };
+    if (!geocodeAllowed(req.ip)) return reply.code(429).send({ error: "too many searches, try again in a minute" });
+    try {
+      return { results: await geocoder.search(q) };
+    } catch (err) {
+      log.warn({ err }, "geocode failed");
+      return reply.code(502).send({ error: "place search is unavailable right now" });
+    }
+  });
+
+  app.get<{ Querystring: { bbox?: string } }>("/api/v1/alerts", async (req, reply) => {
+    const bbox = parseBBox(req.query.bbox);
+    if (!bbox) return reply.code(400).send({ error: "invalid bbox" });
+    const features = hazards.active(bbox);
+    return { type: "FeatureCollection", features, count: features.length };
+  });
+
   app.get("/api/v1/wind", async (_req, reply) => {
-    const field = simulation?.windField(Date.now()) ?? null;
-    if (!field) return reply.code(503).send({ error: "wind field unavailable in live mode" });
+    const field = hub.currentWind ?? simulation?.windField(Date.now()) ?? null;
+    if (!field) return reply.code(503).send({ error: "wind field not loaded yet" });
     return field;
   });
 
@@ -280,7 +379,8 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
 
   function verifySignature(rawBody: string, header: string | undefined): boolean {
     const secret = process.env.INGEST_WEBHOOK_SECRET;
-    if (!secret) return true;
+    // Open hooks are a local-development convenience only.
+    if (!secret) return process.env.NODE_ENV !== "production";
     if (!header) return false;
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
     const got = Buffer.from(header.replace(/^sha256=/, ""), "utf8");
@@ -290,7 +390,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   }
 
   app.post<{ Body: unknown }>("/api/v1/hooks/cad", async (req, reply) => {
-    const raw = JSON.stringify(req.body ?? {});
+    const raw = (req as typeof req & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
     if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
       return reply.code(401).send({ error: "invalid signature" });
     }
@@ -332,8 +432,67 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     return { accepted: signals.length, inserted };
   });
 
+  /**
+   * Batches of satellite fire pixels from the GOES worker (apps/goes-worker).
+   * Low-probability pixels are dropped; the rest map to provider confidence.
+   */
+  const GOES_MASK_CONFIDENCE: Record<number, number> = {
+    10: 0.9, 30: 0.9, // processed fire
+    11: 0.95, 31: 0.95, // saturated fire
+    12: 0.7, 32: 0.7, // cloud contaminated
+    13: 0.8, 33: 0.8, // high probability
+    14: 0.6, 34: 0.6, // medium probability
+  };
+  const THERMAL_SOURCES = new Set(["goes16", "goes18", "goes19"]);
+  app.post<{ Body: { source?: string; scanStart?: string; detections?: unknown[] } }>(
+    "/api/v1/hooks/thermal",
+    { bodyLimit: 2 * 1024 * 1024 },
+    async (req, reply) => {
+      const raw = (req as typeof req & { rawBody?: string }).rawBody ?? "";
+      if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
+        return reply.code(401).send({ error: "invalid signature" });
+      }
+      const source = String(req.body?.source ?? "");
+      const scanStart = Date.parse(String(req.body?.scanStart ?? ""));
+      if (!THERMAL_SOURCES.has(source) || !Number.isFinite(scanStart) || !Array.isArray(req.body?.detections)) {
+        return reply.code(422).send({ error: "source, scanStart and detections are required" });
+      }
+      const observedAt = new Date(scanStart).toISOString();
+      const now = new Date().toISOString();
+      const label = SOURCE_PROFILES[source as RawSignal["source"]].short;
+      const signals: RawSignal[] = [];
+      for (const d of req.body!.detections!.slice(0, 20_000) as Record<string, unknown>[]) {
+        const lat = Number(d.lat);
+        const lon = Number(d.lon);
+        const confidence = GOES_MASK_CONFIDENCE[Number(d.mask)];
+        if (confidence === undefined || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) continue;
+        const frp = Number(d.frp);
+        const id = `${source}-${observedAt}-${lat.toFixed(4)}-${lon.toFixed(4)}`;
+        signals.push({
+          id,
+          source: source as RawSignal["source"],
+          kind: "thermal",
+          tier: 2,
+          lon,
+          lat,
+          observedAt,
+          receivedAt: now,
+          frp: Number.isFinite(frp) && frp > 0 ? frp : undefined,
+          providerConfidence: confidence,
+          label: `${label}${Number.isFinite(frp) && frp > 0 ? ` ${Math.round(frp * 10) / 10} MW` : ""}`,
+          meta: { dedupeKey: id, mask: Number(d.mask), product: "ABI-L2-FDCC" },
+        });
+      }
+      const id = `goes-worker-${source}`;
+      deps.health.register(id, `${label} fire detections (GOES worker)`, "signals", 5 * 60_000);
+      deps.health.success(id, { now: Date.now(), count: signals.length, observedAt: [observedAt] });
+      const inserted = signals.length > 0 ? await pipeline.ingestExternal(signals) : 0;
+      return reply.code(202).send({ accepted: signals.length, inserted });
+    },
+  );
+
   app.post<{ Body: unknown }>("/api/v1/hooks/crowd", async (req, reply) => {
-    const raw = JSON.stringify(req.body ?? {});
+    const raw = (req as typeof req & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
     if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
       return reply.code(401).send({ error: "invalid signature" });
     }
@@ -375,6 +534,15 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   /* WebSocket                                                          */
   /* ------------------------------------------------------------------ */
 
+  await registerAccountRoutes(app, {
+    config,
+    accounts: deps.accounts,
+    alerts: deps.alerts,
+    sender: deps.sender,
+    ingest: (signals) => pipeline.ingestExternal(signals),
+    log,
+  });
+
   app.get("/ws", { websocket: true }, (socket) => {
     hub.handle(socket);
   });
@@ -389,7 +557,12 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   });
 
   // Expose a metrics-friendly summary for load balancers.
-  app.get("/metrics", async (_req, reply) => {
+  app.get("/metrics", async (req, reply) => {
+    if (config.metricsToken) {
+      if (req.headers.authorization !== `Bearer ${config.metricsToken}`) return reply.code(401).send({ error: "unauthorized" });
+    } else if (process.env.NODE_ENV === "production") {
+      return reply.code(404).send({ error: "not found" });
+    }
     const stats = hub.computeStats();
     const lines = [
       "# HELP firepulse_hotspots_total Thermal hotspots retained",

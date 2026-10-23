@@ -2,6 +2,7 @@ import type { WebSocket } from "ws";
 import type {
   ClientMessage,
   FeedStats,
+  HazardAlertFeature,
   IncidentFeature,
   PublicConfig,
   ServerMessage,
@@ -11,6 +12,8 @@ import type { FusionEngine } from "../fusion/engine.js";
 import { featureIntersectsBBox } from "../fusion/engine.js";
 import type { HotspotLog } from "./hotspots.js";
 import type { IngestMetrics } from "./metrics.js";
+import type { SourceHealthBoard } from "./health.js";
+import { hazardIntersectsBBox, type HazardLayer } from "./hazards.js";
 import type { AppConfig } from "../config.js";
 import type { Logger } from "pino";
 import { randomUUID } from "node:crypto";
@@ -37,6 +40,10 @@ export interface HubDeps {
   config: AppConfig;
   publicConfig: PublicConfig;
   log: Logger;
+  /** Upstream feed health, included in every stats frame. */
+  health?: SourceHealthBoard;
+  /** Active hazard alerts, sent with snapshots and as deltas. */
+  hazards?: HazardLayer;
   /** Optional: fans incident diffs out to sibling API instances. */
   cache?: RedisCache | null;
 }
@@ -68,6 +75,10 @@ export class RealtimeHub {
 
   get clientCount(): number {
     return this.clients.size;
+  }
+
+  get currentWind(): WindField | null {
+    return this.wind;
   }
 
   start(): void {
@@ -223,6 +234,7 @@ export class RealtimeHub {
       hotspots: hotspotFeatures,
       wind: this.wind,
       stats: this.computeStats(),
+      hazards: this.deps.hazards?.active(client.bbox, now),
       truncated:
         hotspotFeatures.length >= config.ws.snapshotHotspotBudget ||
         incidents.length >= config.ws.snapshotIncidentBudget,
@@ -238,6 +250,27 @@ export class RealtimeHub {
   /* ------------------------------------------------------------------ */
   /* Delta fan-out                                                       */
   /* ------------------------------------------------------------------ */
+
+  /** Alert changes: upserts go to clients whose viewport they touch, removals to all. */
+  publishHazards(upserts: HazardAlertFeature[], removes: string[]): void {
+    if (this.clients.size === 0 || (upserts.length === 0 && removes.length === 0)) return;
+    for (const client of this.clients.values()) {
+      const visible = upserts.filter((a) => hazardIntersectsBBox(a, client.bbox));
+      if (visible.length === 0 && removes.length === 0) continue;
+      this.send(client, {
+        type: "delta",
+        seq: ++this.seq,
+        serverTime: new Date().toISOString(),
+        incidentsUpsert: [],
+        incidentsRemove: [],
+        hotspotsUpsert: [],
+        hotspotsRemove: [],
+        stats: this.lastStats,
+        hazardsUpsert: visible,
+        hazardsRemove: removes,
+      });
+    }
+  }
 
   publish(upserts: IncidentFeature[], removes: string[], fromRemote = false): void {
     if (!fromRemote && this.deps.cache) {
@@ -331,6 +364,7 @@ export class RealtimeHub {
       fusionRuns: engine.performanceSnapshot.runs,
       lastFusionMs: engine.performanceSnapshot.durationMs,
       clients: this.clients.size,
+      sources: this.deps.health?.snapshot(),
     };
     metrics.fill(stats);
     return stats;

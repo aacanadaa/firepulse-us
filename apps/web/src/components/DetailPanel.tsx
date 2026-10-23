@@ -6,7 +6,7 @@ import {
   type IncidentFeature,
   type SpreadForecast,
 } from "@firepulse/protocol";
-import { formatAcres, formatAge, formatDate, formatMw, formatNumber } from "@/lib/format";
+import { formatAcres, formatAge, formatDate, formatMw, formatNumber, plainFireStatus } from "@/lib/format";
 import type { MapType } from "@/lib/places";
 import { Icon, Sparkline } from "./ui";
 import SpreadSection from "./SpreadSection";
@@ -87,10 +87,27 @@ export default function DetailPanel({
           }}
         >
           <span>{[p.county, p.state].filter(Boolean).join(", ") || "Location pending"}</span>
-          <span style={{ color: "var(--line-strong)" }}>·</span>
-          <span style={{ textTransform: "capitalize" }}>{p.cause ?? "unknown"}</span>
-          <span style={{ color: "var(--line-strong)" }}>·</span>
-          <span style={{ textTransform: "capitalize" }}>{p.status}</span>
+          {p.cause && p.cause !== "unknown" && p.cause !== "prescribed" ? (
+            <>
+              <span style={{ color: "var(--line-strong)" }}>·</span>
+              <span style={{ textTransform: "capitalize" }}>{p.cause} cause</span>
+            </>
+          ) : null}
+        </div>
+        <p style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
+          {plainFireStatus(p, now)}
+        </p>
+        <div className="ins-links">
+          <a
+            href={`https://forecast.weather.gov/MapClick.php?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Alerts and weather here
+          </a>
+          <a href="https://inciweb.wildfire.gov/" target="_blank" rel="noreferrer">
+            InciWeb incident updates
+          </a>
         </div>
       </div>
 

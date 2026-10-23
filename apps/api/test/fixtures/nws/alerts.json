@@ -1,0 +1,65 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.df4580455977900e0a0e8e0a209e72dc934daefd.001.1",
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "id": "urn:oid:2.49.0.1.840.0.df4580455977900e0a0e8e0a209e72dc934daefd.001.1",
+    "areaDesc": "Johnson County/Casper BLM",
+    "affectedZones": [
+     "https://api.weather.gov/zones/fire/WYZ281"
+    ],
+    "sent": "2026-10-22T11:31:00-06:00",
+    "effective": "2026-10-22T11:31:00-06:00",
+    "onset": "2026-10-23T12:00:00-06:00",
+    "expires": "2026-10-23T07:00:00-06:00",
+    "ends": "2026-10-23T20:00:00-06:00",
+    "status": "Actual",
+    "messageType": "Alert",
+    "severity": "Severe",
+    "urgency": "Expected",
+    "event": "Red Flag Warning",
+    "senderName": "NWS Riverton WY",
+    "headline": "Red Flag Warning issued October 22 at 11:31AM MDT until October 23 at 8:00PM MDT by NWS Riverton WY",
+    "description": "The National Weather Service in Riverton has issued a Red Flag\nWarning, which is in effect from noon to 8 PM MDT Friday.\n\n* IMPACTS: Low Humidities...Strong Gusty Winds...and Wind Shift\nwith a Cold Front could cause erratic fire behavior.\n\n* AFFECTED AREA:\nIn North Central WY...Fire Weather Zone 281.\n\n* COUNTIES AFFECTED:\nIn North Central WY...Johnson.\n\n* COLD FRONT: Moves in after 8 PM MDT Friday, with northerly 20 to\n35 mph winds and gusts of 35 to 40 mph.\n\n* WIND: Southwest 25 to 35 mph with gusts up to 50 mph.\n\n* HUMIDITY: As low as 20 percent.",
+    "instruction": "A Red Flag Warning means that critical fire weather conditions are\neither occurring now....or will shortly. A combination of strong\nwinds...low relative humidity...and warm temperatures can\ncontribute to extreme fire behavior."
+   }
+  },
+  {
+   "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.709e74a3696c407f637d7c77fb82c08b00d825ec.001.1",
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "id": "urn:oid:2.49.0.1.840.0.709e74a3696c407f637d7c77fb82c08b00d825ec.001.1",
+    "areaDesc": "Inland Harris; Inland Brazoria; Inland Galveston; Coastal Harris; Coastal Brazoria; Coastal Galveston; Brazoria Islands; Galveston Island; Bolivar Peninsula",
+    "affectedZones": [
+     "https://api.weather.gov/zones/forecast/TXZ213",
+     "https://api.weather.gov/zones/forecast/TXZ237",
+     "https://api.weather.gov/zones/forecast/TXZ238",
+     "https://api.weather.gov/zones/forecast/TXZ313",
+     "https://api.weather.gov/zones/forecast/TXZ337",
+     "https://api.weather.gov/zones/forecast/TXZ338",
+     "https://api.weather.gov/zones/forecast/TXZ437",
+     "https://api.weather.gov/zones/forecast/TXZ438",
+     "https://api.weather.gov/zones/forecast/TXZ439"
+    ],
+    "sent": "2026-10-22T17:16:00-05:00",
+    "effective": "2026-10-22T17:16:00-05:00",
+    "onset": "2026-10-22T17:16:00-05:00",
+    "expires": "2026-10-23T21:30:00-05:00",
+    "ends": null,
+    "status": "Actual",
+    "messageType": "Alert",
+    "severity": "Unknown",
+    "urgency": "Unknown",
+    "event": "Air Quality Alert",
+    "senderName": "NWS Houston/Galveston TX",
+    "headline": "Air Quality Alert issued October 22 at 5:16PM CDT by NWS Houston/Galveston TX",
+    "description": "AQAHGX\n\nThe Texas Commission on Environmental Quality (TCEQ) has issued an\nOzone Action Day for the Houston, Galveston, and Brazoria area for\nFriday, October 23, 2026.\n\nAtmospheric conditions are expected to be favorable for producing\nhigh levels of ozone pollution in the Houston, Galveston, and\nsurrounding areas on Friday. You can help prevent ozone pollution by\nsharing a ride, walking, riding a bicycle, taking your lunch to work,\navoiding drive through lanes, conserving energy and keeping your vehicle\nproperly tuned.\n\nFor more information on ozone:\nOzone: The Facts www.tceq.texas.gov/airquality/monops/ozonefacts.html\nEPA AirNow: www.airnow.gov/?city=Houston&state=TX&country=USA\nTake Care of Texas:\nwww.takecareoftexas.org/conservation-tips/keep-our-air-clean",
+    "instruction": null
+   }
+  }
+ ]
+}

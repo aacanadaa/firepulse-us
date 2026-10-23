@@ -1,14 +1,23 @@
-import { destination, type RawSignal } from "@firepulse/protocol";
+import { destination, EVIDENCE_WINDOW_MAX_MIN, type RawSignal } from "@firepulse/protocol";
 import type { AppConfig } from "./config.js";
 import type { Store } from "./store/types.js";
 import type { FusionEngine } from "./fusion/engine.js";
 import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
 import type { IngestMetrics } from "./realtime/metrics.js";
-import type { OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import type { HazardLayer } from "./realtime/hazards.js";
+import type { SourceHealthBoard } from "./realtime/health.js";
+import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { hazardContextSignals } from "./sources/nws.js";
+import type { LiveWind } from "./sources/wind.js";
+import type { AlertEngine } from "./notify/engine.js";
+import type { HazardAlertFeature, IncidentFeature } from "@firepulse/protocol";
 import type { FireSimulation } from "./simulation/generator.js";
 import { cellOf } from "./h3.js";
 import type { Logger } from "pino";
+
+/** Debounce between a batch landing and the fusion pass it triggers. */
+const FUSION_DEBOUNCE_MS = 1_000;
 
 interface Task {
   name: string;
@@ -31,8 +40,11 @@ export class Pipeline {
   private fusionTimer: NodeJS.Timeout | null = null;
   private purgeTimer: NodeJS.Timeout | null = null;
   private windTimer: NodeJS.Timeout | null = null;
+  private fusionSoon: NodeJS.Timeout | null = null;
   private startedAt = Date.now();
   private stopped = false;
+  /** Adapters bootstrap already polled; their first scheduled poll waits a cycle. */
+  private polledAtBoot = new Set<string>();
 
   constructor(
     private readonly deps: {
@@ -44,13 +56,26 @@ export class Pipeline {
       config: AppConfig;
       adapters: SourceAdapter[];
       officialAdapter: OfficialAdapter | null;
+      hazardAdapter: HazardAdapter | null;
+      hazards: HazardLayer;
+      health: SourceHealthBoard;
+      wind: LiveWind | null;
+      /** Turns fire and warning changes into household alerts. */
+      alerts?: AlertEngine | null;
       simulation: FireSimulation | null;
       log: Logger;
     },
-  ) {}
+  ) {
+    const { adapters, officialAdapter, hazardAdapter, wind, health } = deps;
+    for (const a of adapters) if (a.enabled) health.register(a.id, a.label, "signals", a.intervalMs);
+    if (officialAdapter?.enabled) health.register(officialAdapter.id, officialAdapter.label, "official", officialAdapter.intervalMs);
+    if (hazardAdapter?.enabled) health.register(hazardAdapter.id, hazardAdapter.label, "hazards", hazardAdapter.intervalMs);
+    if (wind) health.register(wind.id, wind.label, "wind", wind.intervalMs);
+  }
 
   async bootstrap(): Promise<void> {
-    const { store, engine, hotspots, metrics, config, simulation, log } = this.deps;
+    const { store, engine, hotspots, metrics, config, simulation, adapters, officialAdapter, hazardAdapter, log } =
+      this.deps;
     const now = Date.now();
 
     if (simulation) {
@@ -58,10 +83,7 @@ export class Pipeline {
       const from = now - Math.max(24, config.ingest.hotspotRetentionHours) * 3_600_000;
       const historical = simulation.generate(from, now);
       log.info({ signals: historical.length }, "seeding historical signals");
-      const normalized = historical.map((s) => this.normalize(s, now));
-      await store.insertSignals(normalized);
-      hotspots.add(normalized, now);
-      metrics.record(normalized, now);
+      await store.insertSignals(historical.map((s) => this.normalize(s, now)));
 
       const official = simulation.officialDue(from, now);
       if (official.length > 0) {
@@ -74,8 +96,30 @@ export class Pipeline {
       }
     }
 
-    await engine.hydrate();
-    await this.runFusion(now);
+    // The store holds whatever earlier runs collected (Postgres survives a
+    // restart), so the hotspot log and replay start from it, not empty.
+    const restored = await store.recentSignals(now - this.retentionMs, now + 5_000);
+    hotspots.add(restored, now);
+    metrics.record(restored, now);
+    if (!simulation) log.info({ signals: restored.length }, "restored signals from store");
+
+    await engine.hydrate(now);
+
+    // Fill in whatever happened while the process was down.
+    const backfill = adapters.filter((a) => a.enabled && a.backfill);
+    const official = !simulation && officialAdapter?.enabled ? officialAdapter : null;
+    const hazards = hazardAdapter?.enabled ? hazardAdapter : null;
+    for (const a of [...backfill, official, hazards]) if (a) this.polledAtBoot.add(a.id);
+    if (backfill.length > 0 || official || hazards) {
+      await Promise.all([
+        ...backfill.map((a) => this.pollSource(a, now - this.retentionMs)),
+        ...(official ? [this.pollOfficial(official)] : []),
+        ...(hazards ? [this.pollHazards(hazards)] : []),
+      ]);
+      log.info({ adapters: backfill.map((a) => a.id) }, "backfilled live feeds");
+    }
+
+    await this.runFusion(Date.now());
     log.info(
       { hotspots: hotspots.count, incidents: engine.allIncidents().length },
       "pipeline bootstrap complete",
@@ -87,12 +131,23 @@ export class Pipeline {
 
     for (const adapter of adapters) {
       if (!adapter.enabled) continue;
-      this.tasks.push(this.schedule(adapter.id, adapter.intervalMs, () => this.pollSource(adapter)));
+      this.tasks.push(
+        this.schedule(adapter.id, adapter.intervalMs, () => this.pollSource(adapter), !this.polledAtBoot.has(adapter.id)),
+      );
     }
 
     if (this.deps.officialAdapter?.enabled) {
       const official = this.deps.officialAdapter;
-      this.tasks.push(this.schedule("official", official.intervalMs, () => this.pollOfficial(official)));
+      this.tasks.push(
+        this.schedule("official", official.intervalMs, () => this.pollOfficial(official), !this.polledAtBoot.has(official.id)),
+      );
+    }
+
+    if (this.deps.hazardAdapter?.enabled) {
+      const hazards = this.deps.hazardAdapter;
+      this.tasks.push(
+        this.schedule(hazards.id, hazards.intervalMs, () => this.pollHazards(hazards), !this.polledAtBoot.has(hazards.id)),
+      );
     }
 
     this.fusionTimer = setInterval(() => {
@@ -103,7 +158,16 @@ export class Pipeline {
     this.purgeTimer = setInterval(() => void this.purge(), 10 * 60_000);
     this.purgeTimer.unref?.();
 
-    if (this.deps.simulation) {
+    if (this.deps.wind) {
+      const wind = this.deps.wind;
+      this.tasks.push(this.schedule(wind.id, wind.intervalMs, () => this.refreshWind(wind)));
+      // Step through the cached forecast hours between refreshes.
+      this.windTimer = setInterval(() => {
+        const field = wind.current();
+        if (field) this.deps.hub.setWind(field);
+      }, 10 * 60_000);
+      this.windTimer.unref?.();
+    } else if (this.deps.simulation) {
       const sim = this.deps.simulation;
       const tick = () => {
         const field = sim.windField(Date.now());
@@ -126,6 +190,28 @@ export class Pipeline {
     if (this.fusionTimer) clearInterval(this.fusionTimer);
     if (this.purgeTimer) clearInterval(this.purgeTimer);
     if (this.windTimer) clearInterval(this.windTimer);
+    if (this.fusionSoon) clearTimeout(this.fusionSoon);
+  }
+
+  /**
+   * Signals are kept for the longer of the hotspot display window and the
+   * longest fusion evidence window; anything older is never used again.
+   */
+  get retentionMs(): number {
+    return Math.max(
+      this.deps.config.ingest.hotspotRetentionHours * 3_600_000,
+      EVIDENCE_WINDOW_MAX_MIN * 60_000,
+    );
+  }
+
+  /** Coalesces a burst of inserts into one fusion pass. */
+  private requestFusion(): void {
+    if (!this.deps.config.fusion.onIngest || this.stopped || this.fusionSoon) return;
+    this.fusionSoon = setTimeout(() => {
+      this.fusionSoon = null;
+      void this.runFusion();
+    }, FUSION_DEBOUNCE_MS);
+    this.fusionSoon.unref?.();
   }
 
   /** Used by the crowd-sourced and CAD webhook endpoints. */
@@ -133,11 +219,12 @@ export class Pipeline {
     const now = Date.now();
     const normalized = signals.map((s) => this.normalize(s, now));
     const inserted = await this.deps.store.insertSignals(normalized);
-    if (inserted > 0) {
-      this.deps.hotspots.add(normalized, now);
-      this.deps.metrics.record(normalized, now);
+    if (inserted.length > 0) {
+      this.deps.hotspots.add(inserted, now);
+      this.deps.metrics.record(inserted, now);
+      this.requestFusion();
     }
-    return inserted;
+    return inserted.length;
   }
 
   normalize(signal: RawSignal, now: number): RawSignal {
@@ -187,29 +274,36 @@ export class Pipeline {
     try {
       const result = await this.deps.engine.run(now);
       this.deps.hub.publish(result.upserts, result.removes);
+      this.alertOn(result.upserts, []);
     } catch (err) {
       this.deps.log.error({ err }, "fusion pass failed");
     }
   }
 
-  private async pollSource(adapter: SourceAdapter): Promise<void> {
+  private async pollSource(adapter: SourceAdapter, since?: number): Promise<void> {
     const now = Date.now();
     try {
-      const signals = await adapter.poll({ now, since: now - adapter.intervalMs - 2_000 });
+      const cutoff = now - this.retentionMs;
+      const polled = await adapter.poll({ now, since: since ?? now - adapter.intervalMs - 2_000 });
+      this.deps.health.success(adapter.id, { now, count: polled.length, observedAt: polled.map((s) => s.observedAt) });
+      const signals = polled.filter((s) => Date.parse(s.observedAt) >= cutoff);
       if (signals.length === 0) return;
       const normalized = signals.map((s) => this.normalize(s, now));
       const inserted = await this.deps.store.insertSignals(normalized);
-      if (inserted < normalized.length) {
-        this.deps.metrics.recordDrop(normalized.length - inserted);
+      if (inserted.length < normalized.length) {
+        this.deps.metrics.recordDrop(normalized.length - inserted.length);
       }
-      if (inserted > 0) {
-        this.deps.hotspots.add(normalized, now);
-        this.deps.metrics.record(normalized, now);
+      if (inserted.length > 0) {
+        // Only new rows: FIRMS returns the whole trailing day on every poll.
+        this.deps.hotspots.add(inserted, now);
+        this.deps.metrics.record(inserted, now);
         // Hotspots are pushed immediately on the next fusion tick; if the
         // fusion loop is idle, publish an empty delta so heat still streams.
         this.deps.hub.publish([], []);
+        this.requestFusion();
       }
     } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "source poll failed");
     }
   }
@@ -218,20 +312,86 @@ export class Pipeline {
     const now = Date.now();
     try {
       const batch = await adapter.poll({ now, since: this.startedAt - 24 * 3_600_000 });
+      this.deps.health.success(adapter.id, {
+        now,
+        count: batch.features.length,
+        observedAt: batch.features.map((f) => f.properties.updatedAt),
+      });
       if (batch.features.length === 0) return;
       const delta = await this.deps.engine.ingestOfficial(batch.features, batch.perimeters, now);
-      if (delta.upserts.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
+      if (batch.complete) {
+        const present = new Set(batch.features.map((f) => f.id));
+        delta.removes.push(...(await this.deps.engine.retireOfficial(present, batch.complete.idPrefix)));
+      }
+      if (delta.upserts.length > 0 || delta.removes.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
+      this.alertOn(delta.upserts, []);
+      // Estimates fold into new perimeters on the next pass.
+      this.requestFusion();
       this.deps.log.info(
         { incidents: batch.features.length, adapter: adapter.id },
         "official ground truth ingested",
       );
     } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "official poll failed");
     }
   }
 
+  /** Alerts never hold up ingestion; failures are logged and retried next change. */
+  private alertOn(incidents: IncidentFeature[], hazards: HazardAlertFeature[]): void {
+    const alerts = this.deps.alerts;
+    if (!alerts || (incidents.length === 0 && hazards.length === 0)) return;
+    void (async () => {
+      if (incidents.length > 0) await alerts.onIncidents(incidents);
+      if (hazards.length > 0) await alerts.onHazards(hazards);
+    })().catch((err) => this.deps.log.warn({ err }, "alert evaluation failed"));
+  }
+
+  private async refreshWind(wind: LiveWind): Promise<void> {
+    const now = Date.now();
+    try {
+      const hours = await wind.refresh();
+      const field = wind.current();
+      this.deps.health.success(wind.id, { now: Date.now(), count: hours, observedAt: [field?.validAt] });
+      if (field) this.deps.hub.setWind(field);
+    } catch (err) {
+      this.deps.health.failure(wind.id, now, err);
+      this.deps.log.warn({ err }, "wind refresh failed");
+    }
+  }
+
+  private async pollHazards(adapter: HazardAdapter): Promise<void> {
+    const now = Date.now();
+    try {
+      const { alerts, warnings } = await adapter.poll({ now, since: now - adapter.intervalMs });
+      this.deps.health.success(adapter.id, {
+        now,
+        count: alerts.length,
+        observedAt: alerts.map((a) => a.properties.sent),
+        warnings,
+      });
+      if (warnings.length > 0) this.deps.log.warn({ adapter: adapter.id, warnings }, "hazard poll incomplete");
+      const { upserts, removes } = this.deps.hazards.replace(alerts);
+      this.deps.hub.publishHazards(upserts, removes);
+      this.alertOn([], upserts);
+      if (upserts.length > 0 || removes.length > 0) {
+        this.deps.log.info({ active: alerts.length, new: upserts.length, ended: removes.length }, "hazard alerts updated");
+      }
+      // Fire-weather alerts double as fusion context for clusters inside them.
+      const context = hazardContextSignals(alerts, new Date(now).toISOString()).map((s) => this.normalize(s, now));
+      const inserted = await this.deps.store.insertSignals(context);
+      if (inserted.length > 0) {
+        this.deps.metrics.record(inserted, now);
+        this.requestFusion();
+      }
+    } catch (err) {
+      this.deps.health.failure(adapter.id, now, err);
+      this.deps.log.warn({ err, adapter: adapter.id }, "hazard poll failed");
+    }
+  }
+
   private async purge(): Promise<void> {
-    const cutoff = new Date(Date.now() - 24 * 3_600_000);
+    const cutoff = new Date(Date.now() - this.retentionMs);
     try {
       const removed = await this.deps.store.purgeSignals(cutoff);
       this.deps.hotspots.trim();
@@ -241,7 +401,7 @@ export class Pipeline {
     }
   }
 
-  private schedule(name: string, intervalMs: number, fn: () => Promise<void>): Task {
+  private schedule(name: string, intervalMs: number, fn: () => Promise<void>, runSoon = true): Task {
     const task: Task = { name, intervalMs, timer: null, running: false };
     const tick = async () => {
       if (task.running) return;
@@ -253,7 +413,7 @@ export class Pipeline {
       }
     };
     // Stagger the first poll so adapters do not fire in lockstep.
-    setTimeout(() => void tick(), Math.random() * Math.min(intervalMs, 3000));
+    if (runSoon) setTimeout(() => void tick(), Math.random() * Math.min(intervalMs, 3000));
     task.timer = setInterval(() => void tick(), intervalMs);
     task.timer.unref?.();
     return task;

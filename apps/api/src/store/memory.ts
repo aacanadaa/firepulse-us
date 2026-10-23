@@ -29,14 +29,14 @@ export class MemoryStore implements Store {
   }
   async close(): Promise<void> {}
 
-  async insertSignals(signals: RawSignal[]): Promise<number> {
-    let inserted = 0;
+  async insertSignals(signals: RawSignal[]): Promise<RawSignal[]> {
+    const inserted: RawSignal[] = [];
     for (const s of signals) {
       const key = `${s.source}:${(s.meta?.dedupeKey as string | undefined) ?? s.id}`;
       if (this.dedupe.has(key)) continue;
       this.signals.set(s.id, s);
       this.dedupe.set(key, s.id);
-      inserted++;
+      inserted.push(s);
     }
     return inserted;
   }
@@ -110,6 +110,11 @@ export class MemoryStore implements Store {
   }
 
   async insertPerimeter(p: OfficialPerimeterRecord): Promise<void> {
+    // WFIGS republishes every incident on every poll; only a new
+    // publication time is a new revision.
+    if (this.perimeterRows.some((r) => r.incidentId === p.incidentId && r.validTo === null && r.publishedAt === p.publishedAt)) {
+      return;
+    }
     // SCD-2: close the previous open revision for this incident.
     for (const row of this.perimeterRows) {
       if (row.incidentId === p.incidentId && row.validTo === null) row.validTo = p.validFrom;

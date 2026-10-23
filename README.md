@@ -39,6 +39,23 @@ from the merge ledger: `official_since − first_detected_at`.
   estimates. Official perimeters are solid, forest-green and hatched; early
   zones are dashed orange with a north-edge label. Thermal detections fade from
   ember to stone over 24 hours and scale with Fire Radiative Power.
+- **Near you.** Watch up to five places (search an address or town, or use
+  your location). For each, FirePulse lists fires within 10, 25 or 50 km,
+  measured to the fire's mapped edge and labelled with direction, alongside
+  any evacuation order, fire warning, red flag or smoke alert covering it.
+  Every fire gets a plain-language status ("Official fire · 35% contained",
+  "Possible fire · not confirmed by fire agencies", "Planned burn") and links
+  to the official sources. Places are kept in the browser.
+- **Alerts on your devices.** Create an account with a username and password,
+  or Sign in with Google, then turn on alerts in the browser (or in the app added to
+  an iPhone's home screen). FirePulse pushes a notification when an evacuation
+  order or fire warning covers a watched place, when a fire is confirmed within
+  its radius or crosses 10, 5 or 2 km toward it, and (once a day) when red flag
+  conditions start. Quiet hours hold everything except evacuations and fire
+  warnings, and each alert is sent once.
+- **Warnings on the map.** NWS alert areas are drawn under the fire data: solid
+  red for evacuations and fire warnings, dashed amber for fire weather, grey
+  for smoke and air quality.
 - **Live incident feed.** Sorted by fastest-growing / newly-detected /
   confidence, with source tags (`GOES-18`, `CAD`, `NIFC`, …), a confidence score
   and bar, area, growth rate, hotspot count and a second-level age.
@@ -117,7 +134,7 @@ Tier 2  GOES-16/18 · VIIRS · MODIS      ├─▶ ingestion bus ─▶ PostGIS
 Tier 3  PM2.5 · RAWS · Red Flag         │        │
 Tier 4  NIFC WFIGS · CAL FIRE ──────────┘        ▼
                                           fusion engine (4 s)
-                                          DBSCAN 2 km / 30 min
+                                          DBSCAN 2 km / per-source windows
                                           noisy-OR confidence
                                           buffered convex hull
                                           H3 identity · merge · diff
@@ -194,19 +211,56 @@ Or point at your own services:
 ```bash
 export DATABASE_URL=postgres://user:pass@localhost:5432/firepulse
 export REDIS_URL=redis://localhost:6379
-psql "$DATABASE_URL" -f db/migrations/001_init.sql
+pnpm db:migrate               # also runs automatically when the API starts
 psql "$DATABASE_URL" -f db/seed/dev_seed.sql
 pnpm dev
 ```
+
+The database needs PostGIS. Migrations in `db/migrations/` apply in order,
+once each, and are tracked in `firepulse.schema_migration`. Set
+`TEST_DATABASE_URL` (a throwaway database, rebuilt by the test) to include
+the Postgres integration test in `pnpm test`.
 
 ### Live feeds
 
 ```bash
 export DATA_MODE=live
-export FIRMS_MAP_KEY=...      # NASA FIRMS area API
-# WFIGS and NWS need no key
+export FIRMS_MAP_KEY=...      # NASA FIRMS area API (free key)
+export FIREPULSE_USER_AGENT="FirePulse/1.0 (you@example.com)"
+# WFIGS, NWS and Open-Meteo need no key
 pnpm dev:api
 ```
+
+| Feed | What it provides | Cadence |
+|---|---|---|
+| NASA FIRMS VIIRS (S-NPP, NOAA-20, NOAA-21) + MODIS | satellite heat detections, 1-3 h after each pass | 10 min |
+| NIFC WFIGS incidents + perimeters | official fires, perimeters, containment, prescribed burns | 5 min |
+| NWS alerts | evacuation orders, fire warnings, red flag / fire weather, smoke and air quality, with zone outlines | 5 min |
+| Open-Meteo | 10 m wind on a 2° CONUS grid, 30 forecast hours | 6 h |
+| NOAA GOES-18/19 ([worker](./apps/goes-worker)) | geostationary fire pixels, minutes after a scan | 5 min |
+| EPA AirNow | PM2.5 at about 900 monitors: smoke context, air quality at your places | 30 min |
+| US Census geocoder | names for estimated fires ("Fire near Paradise, CA") | as needed |
+
+At startup the API backfills the last 30 h from each feed, so the map isn't
+empty after a restart. Each feed's status, last success and newest observation
+show in the Layers popover and at `/api/health`. In production
+(`NODE_ENV=production`), live mode refuses to start without `DATABASE_URL`.
+
+VIIRS and MODIS pass a few times a day and FIRMS publishes their detections
+1-3 h later; GOES scans every 5 minutes. Each source carries its own evidence
+window (30 h for polar orbiters, 2 h for GOES, about an hour for dispatch and
+crowd reports).
+
+Satellite heat seen in one pass is usually a farm or industrial burn, so an
+estimate is **single** until heat is seen again 6 h or more later
+(**persistent**) or another kind of evidence agrees (**corroborated**). Single
+heat is drawn faintly, listed under Unconfirmed, and never reaches Near you or
+alerts. Refineries, gas flares and steel mills are dropped using
+`apps/api/data/heat-mask.json`, built from a year of FIRMS data by
+`pnpm --filter @firepulse/api heat-mask:build`.
+
+The GOES worker is a separate Python process; see
+[`apps/goes-worker`](./apps/goes-worker/README.md).
 
 `DATA_MODE=hybrid` keeps the demo running alongside real feeds, which is useful
 for development when an upstream is flaky.
@@ -220,7 +274,38 @@ curl -X POST localhost:8790/api/v1/hooks/crowd \
        "description":"Large smoke column","photo":"https://example.com/smoke.jpg"}'
 ```
 
-Set `INGEST_WEBHOOK_SECRET` to require `x-firepulse-signature: sha256=<hmac>`.
+Set `INGEST_WEBHOOK_SECRET` to require `x-firepulse-signature: sha256=<hmac>`
+over the raw request body. In production, hooks refuse unsigned posts.
+
+### Accounts and alerts
+
+Accounts are a username and password, or Sign in with Google
+(`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`). People watch up to five places
+and turn on alerts per browser with Web Push (`VAPID_PUBLIC_KEY` /
+`VAPID_PRIVATE_KEY`; generate a pair with `npx web-push generate-vapid-keys`).
+
+| Alert | When | Severity |
+|---|---|---|
+| Evacuation order, fire warning | an NWS alert area covers the place | urgent: ignores quiet hours |
+| New fire | an official fire (not a planned burn) or confirmed estimate within the place's radius, measured to the fire's edge | by distance |
+| Fire closer | a known fire crosses 10, 5 or 2 km, or reaches the place | by distance |
+| Spread | the experimental next-day forecast expects growth toward the place | info / warning |
+| Fire weather | red flag or extreme fire danger, once a day | info / warning |
+
+Every alert is stored once per (place, kind, fire, revision), so restarts never
+resend one. Fires already present when a place is added are recorded as
+known, not alerted. Non-urgent alerts wait out quiet hours, and each person
+gets at most 6 an hour. Forecasts run ahead of time only for fires within
+50 km of a watched place. Account routes are proxied through the web app's
+origin (`API_INTERNAL_URL`), so the session cookie is first-party.
+
+Signed-in people can report smoke or fire. Reports are low-weight evidence and
+never confirm a fire or send an alert on their own.
+
+### Deploying
+
+See [`docs/DEPLOY.md`](./docs/DEPLOY.md): the web app on Vercel; the API, the
+GOES worker and Postgres + PostGIS on always-on hosts.
 
 ### Next-day spread forecasts (experimental)
 
@@ -300,15 +385,19 @@ firepulse/
 │   ├── api/                  Fastify + WebSocket ingestion & fusion service
 │   │   ├── src/
 │   │   │   ├── fusion/       engine.ts — clustering, confidence, merge, diff
-│   │   │   ├── sources/      adapters: live (FIRMS, WFIGS, NWS) + simulated
+│   │   │   ├── sources/      adapters: FIRMS, WFIGS, NWS, AirNow, wind + simulated
+│   │   │   ├── accounts/     users, sessions, places, Google sign-in, routes
+│   │   │   ├── notify/       alert rules, alert engine, Web Push outbox
 │   │   │   ├── simulation/   deterministic multi-tier generator + geography
 │   │   │   ├── store/        MemoryStore / PostgresStore / RedisCache
 │   │   │   ├── realtime/     hub, hotspot sequence log, metrics
 │   │   │   ├── spread/       next-day spread: ONNX model, static tiles, weather, summary
 │   │   │   ├── pipeline.ts   ingest → fuse → publish orchestration
 │   │   │   └── server.ts     HTTP API + WS + webhooks + metrics
-│   │   └── test/             76 tests: model, parsers, DBSCAN, merge, replay, spread
-│   └── web/                  Next.js App Router client
+│   │   ├── data/             static heat-source mask
+│   │   └── test/             model, parsers, fusion, Postgres, accounts, alerts, spread, feeds
+│   ├── goes-worker/          Python: GOES-18/19 fire pixels → the API
+│   └── web/                  Next.js App Router client (installable, with a service worker)
 │       ├── src/components/   AppHeader, MapCanvas, Sidebar, DetailPanel, Timeline
 │       ├── src/lib/          places.ts (4 basemaps), layers.ts, store.ts, select.ts
 │       └── public/basemap/   PMTiles v3 (built from Natural Earth)
@@ -365,13 +454,26 @@ than its `lastHotspotSeq` inside its viewport. See
 | GET | `/api/v1/incidents/:id` | signals, neighbours, series |
 | GET | `/api/v1/incidents/:id/spread` | next-day spread forecast (202 while computing) |
 | GET | `/api/v1/hotspots?bbox=&from=&to=` | thermal window |
+| GET | `/api/v1/alerts?bbox=` | active NWS fire, evacuation and smoke alerts |
+| GET | `/api/v1/nearby?lat=&lon=&radiusKm=` | fires near a point and alerts covering it |
+| GET | `/api/v1/geocode?q=` | US place search (Census for addresses, Photon for names) |
 | GET | `/api/v1/timeline?hours=24` | histogram + official draws |
 | GET | `/api/v1/stats` | rates, latency, fusion config |
 | GET | `/api/v1/merges` | lead-time ledger |
 | GET | `/api/v1/wind` | u/v grid |
 | POST | `/api/v1/hooks/cad` | Tier-1 dispatch |
 | POST | `/api/v1/hooks/crowd` | Tier-1 sighting |
-| GET | `/metrics` | Prometheus text |
+| POST | `/api/v1/hooks/thermal` | GOES fire pixels from the worker (signed) |
+| GET | `/api/v1/auth/me` | signed-in user, Google availability, push key |
+| POST | `/api/v1/auth/signup`, `/login`, `/logout` | username and password |
+| GET | `/api/v1/auth/google/start`, `/callback` | Sign in with Google |
+| GET, POST, PATCH, DELETE | `/api/v1/me/places[/:id]` | watched places (`/import` moves browser-kept places in) |
+| GET, PUT | `/api/v1/me/settings` | alert kinds, quiet hours, time zone |
+| GET | `/api/v1/me/alerts` | alert history |
+| POST | `/api/v1/me/reports` | smoke report |
+| POST | `/api/v1/me/password`; DELETE `/api/v1/me` | change password; delete account |
+| POST, DELETE | `/api/v1/push/subscribe`; POST `/api/v1/push/test` | this device's alerts |
+| GET | `/metrics` | Prometheus text (`METRICS_TOKEN` bearer) |
 | GET | `/ws` | delta stream |
 
 ---
@@ -380,7 +482,8 @@ than its `lastHotspotSeq` inside its viewport. See
 
 ```bash
 pnpm typecheck                  # protocol + API + web
-pnpm test                       # 76 tests
+pnpm test                       # API tests; TEST_DATABASE_URL adds the Postgres ones
+(cd apps/goes-worker && .venv/bin/python -m unittest discover -s tests)
 node scripts/shot.mjs           # headless screenshot + console/WebGL diagnostics
 node scripts/build-basemap.mjs  # PMTiles writer, validated by reading it back
 ```
@@ -393,12 +496,17 @@ re-opening the archive through `pmtiles` and decoding a sample MVT tile.
 ## Limitations
 
 - Demo mode is **synthetic**; the UI labels it. It is not live fire data.
+- Polar-orbiter detections are 1-3 h old when they arrive; GOES is minutes
+  old but only locates a fire to about 2 km.
+- Alerts depend on browsers and push services. iPhones only deliver web push
+  to the app added to the home screen, and any device can miss one.
+- The heat-source mask is a yearly statistical filter: a new gas flare shows
+  as satellite heat until it has burned for about a month.
 - Single-bearing observations are range-bearing projections. Multi-camera ray
   intersection (weighted least squares) is the next accuracy improvement.
 - GOES geolocation (~2 km) sets a floor on cluster radius; below it, one fire can
   fragment into multiple zones.
-- No read-API authentication in this build. Production needs keys, rate limits,
-  CSP and an evacuation disclaimer.
+- The public read API has no keys; it is rate limited per client.
 - Spread forecasts cover the contiguous US only, use satellite detections that
   can be hours old, and know nothing about suppression. They are experimental.
 - **Not for evacuation decisions.** Algorithmic estimates are labelled as such;

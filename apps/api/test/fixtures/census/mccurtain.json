@@ -1,0 +1,22 @@
+{
+ "result": {
+  "geographies": {
+   "States": [
+    {
+     "NAME": "Oklahoma",
+     "BASENAME": "Oklahoma",
+     "STUSAB": "OK",
+     "GEOID": "40"
+    }
+   ],
+   "Counties": [
+    {
+     "NAME": "McCurtain County",
+     "BASENAME": "McCurtain",
+     "STUSAB": null,
+     "GEOID": "40089"
+    }
+   ]
+  }
+ }
+}

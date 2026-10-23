@@ -4,6 +4,8 @@ import { MemoryStore } from "./store/memory.js";
 import { PostgresStore } from "./store/postgres.js";
 import { RedisCache } from "./store/redis.js";
 import { FusionEngine } from "./fusion/engine.js";
+import { HeatMask } from "./fusion/heatMask.js";
+import { PlaceNamer } from "./fusion/placeNames.js";
 import { HotspotLog } from "./realtime/hotspots.js";
 import { IngestMetrics } from "./realtime/metrics.js";
 import { RealtimeHub } from "./realtime/hub.js";
@@ -12,8 +14,19 @@ import { createServer } from "./server.js";
 import { SpreadRuntime } from "./spread/index.js";
 import { FireSimulation } from "./simulation/generator.js";
 import { createSimulatedAdapters, createSimulatedOfficialAdapter } from "./sources/simulated.js";
-import { createFirmsAdapters, createNwsAdapter, createWfigsAdapter } from "./sources/live.js";
-import type { OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { createFirmsAdapters, createWfigsAdapter } from "./sources/live.js";
+import { createNwsAdapter } from "./sources/nws.js";
+import { LiveWind } from "./sources/wind.js";
+import { AirQualityLayer, createAirNowAdapter } from "./sources/airnow.js";
+import { HazardLayer } from "./realtime/hazards.js";
+import { SourceHealthBoard } from "./realtime/health.js";
+import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { MemoryAccountStore } from "./accounts/memory.js";
+import { PostgresAccountStore } from "./accounts/postgres.js";
+import { AlertEngine } from "./notify/engine.js";
+import { PushOutbox, webPushSender, type PushSender } from "./notify/outbox.js";
+import { SpreadScheduler } from "./spread/scheduler.js";
+import { FeedWatch } from "./realtime/feedWatch.js";
 import type { Store } from "./store/types.js";
 
 const log = pino({
@@ -25,6 +38,12 @@ const log = pino({
 });
 
 async function chooseStore(): Promise<Store> {
+  // Live production data (and, later, user accounts) must survive a
+  // restart; never fall back to memory there.
+  const requirePostgres = config.dataMode === "live" && process.env.NODE_ENV === "production";
+  if (requirePostgres && !config.databaseUrl) {
+    throw new Error("DATA_MODE=live in production requires DATABASE_URL");
+  }
   if (config.databaseUrl) {
     const pg = new PostgresStore(config.databaseUrl);
     try {
@@ -32,6 +51,7 @@ async function chooseStore(): Promise<Store> {
       log.info("using Postgres/PostGIS store");
       return pg;
     } catch (err) {
+      if (requirePostgres) throw err;
       log.warn(
         { err: err instanceof Error ? err.message : err },
         "DATABASE_URL set but unreachable — falling back to in-memory store",
@@ -58,16 +78,23 @@ async function main(): Promise<void> {
 
   let adapters: SourceAdapter[] = [];
   let officialAdapter: OfficialAdapter | null = null;
+  let hazardAdapter: HazardAdapter | null = null;
+  let wind: LiveWind | null = null;
+  const airQuality = new AirQualityLayer();
 
   if (config.dataMode === "simulation" || !config.dataMode) {
     if (!simulation) throw new Error("simulation mode requires a generator");
     adapters = createSimulatedAdapters(simulation);
     officialAdapter = createSimulatedOfficialAdapter(simulation);
   } else {
-    adapters = [...createFirmsAdapters(), createNwsAdapter()];
+    adapters = createFirmsAdapters();
     officialAdapter = createWfigsAdapter();
+    hazardAdapter = createNwsAdapter(config.userAgent);
+    wind = new LiveWind({ userAgent: config.userAgent, timeoutMs: config.spread.httpTimeoutMs });
+    if (process.env.AIRNOW_API_KEY) adapters.push(createAirNowAdapter(process.env.AIRNOW_API_KEY, airQuality));
+    else log.warn("no AIRNOW_API_KEY: no air quality readings");
     if (adapters.length === 0) {
-      log.warn("live mode with no FIRMS_MAP_KEY — only WFIGS/NWS will ingest");
+      log.warn("live mode with no FIRMS_MAP_KEY — no satellite detections; only WFIGS/NWS will ingest");
     }
   }
 
@@ -77,9 +104,16 @@ async function main(): Promise<void> {
     officialAdapter = officialAdapter ?? createSimulatedOfficialAdapter(simulation);
   }
 
-  const engine = new FusionEngine(store, config, log, cache.available ? cache : undefined);
+  const heatMask = HeatMask.load(config.heatMaskPath);
+  if (heatMask) log.info({ cells: heatMask.size }, "static heat-source mask loaded");
+  else log.warn({ path: config.heatMaskPath }, "no static heat-source mask; refineries and flares may show as fires");
+  // Live fires get human names ("Fire near Paradise, CA") from the Census.
+  const namer = config.dataMode === "simulation" ? undefined : new PlaceNamer({ userAgent: config.userAgent });
+  const engine = new FusionEngine(store, config, log, cache.available ? cache : undefined, heatMask ?? undefined, namer);
   const hotspots = new HotspotLog(config.ingest.hotspotRetentionHours * 3_600_000);
   const metrics = new IngestMetrics();
+  const hazards = new HazardLayer();
+  const health = new SourceHealthBoard();
   const hub = new RealtimeHub({
     engine,
     hotspots,
@@ -88,7 +122,27 @@ async function main(): Promise<void> {
     publicConfig: config.publicConfig,
     log,
     cache,
+    health,
+    hazards,
   });
+
+  const accounts = store instanceof PostgresStore ? new PostgresAccountStore(store.db) : new MemoryAccountStore();
+  if (accounts.kind === "memory") log.warn("accounts are in memory: sign-ups and places are lost on restart");
+  let sender: PushSender | null = null;
+  if (config.push.publicKey && config.push.privateKey) {
+    sender = await webPushSender(config.push);
+  } else {
+    log.warn("no VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY: alerts are recorded but not pushed");
+  }
+  const outbox = sender ? new PushOutbox({ accounts, sender, log }) : null;
+  const alerts = new AlertEngine({
+    accounts,
+    log,
+    incidents: () => engine.allIncidents(),
+    hazards: () => hazards.active(),
+    onQueued: () => void outbox?.flush(),
+  });
+  await alerts.reload();
 
   const pipeline = new Pipeline({
     store,
@@ -99,6 +153,11 @@ async function main(): Promise<void> {
     config,
     adapters,
     officialAdapter,
+    hazardAdapter,
+    hazards,
+    health,
+    wind,
+    alerts,
     simulation,
     log,
   });
@@ -114,6 +173,13 @@ async function main(): Promise<void> {
   });
   // Downloads (if any) happen in the background; the API serves meanwhile.
   void spread.start();
+  const spreadScheduler = new SpreadScheduler({
+    forecast: (id) => (spread.service ? spread.service.forecast(id) : Promise.resolve(null)),
+    incidents: () => engine.allIncidents(),
+    places: () => alerts.places,
+    onForecast: (incident, forecast) => alerts.onSpread(incident, forecast),
+    log,
+  });
 
   const app = await createServer({
     config,
@@ -125,12 +191,34 @@ async function main(): Promise<void> {
     pipeline,
     simulation,
     spread,
+    hazards,
+    health,
+    accounts,
+    alerts,
+    sender,
+    spreadScheduler,
+    airQuality,
     log,
     startedAt,
   });
 
   await app.listen({ port: config.port, host: config.host });
   pipeline.start();
+  outbox?.start();
+  spreadScheduler.start();
+
+  const feedWatch = new FeedWatch({ snapshot: () => health.snapshot(), log, webhookUrl: config.opsWebhookUrl || undefined });
+  const maintenance = setInterval(() => {
+    void feedWatch.check();
+  }, 5 * 60_000);
+  maintenance.unref();
+  const cleanup = setInterval(() => {
+    accounts
+      .cleanup(Date.now(), 90)
+      .then((n) => (n.sessions || n.alerts ? log.info(n, "removed expired sessions and old alert history") : undefined))
+      .catch((err) => log.warn({ err }, "account cleanup failed"));
+  }, 3_600_000);
+  cleanup.unref();
   hub.start();
   const heartbeat = hub.heartbeat();
 
@@ -140,7 +228,7 @@ async function main(): Promise<void> {
       ws: `ws://127.0.0.1:${config.port}/ws`,
       mode: config.dataMode,
       store: store.kind,
-      fusion: `${config.fusion.radiusKm}km / ${config.fusion.windowMin}min / ${config.fusion.intervalMs}ms`,
+      fusion: `${config.fusion.radiusKm}km / ${config.fusion.intervalMs}ms`,
     },
     "FirePulse API ready",
   );
@@ -152,6 +240,10 @@ async function main(): Promise<void> {
     log.info({ signal }, "shutting down");
     clearInterval(heartbeat);
     hub.stop();
+    outbox?.stop();
+    spreadScheduler.stop();
+    clearInterval(maintenance);
+    clearInterval(cleanup);
     await pipeline.stop();
     await app.close().catch(() => undefined);
     await cache.close().catch(() => undefined);

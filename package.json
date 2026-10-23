@@ -14,7 +14,7 @@
     "build": "pnpm --filter @firepulse/protocol build && pnpm --filter @firepulse/api build && pnpm --filter @firepulse/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @firepulse/api test",
-    "db:migrate": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/migrations/001_init.sql",
+    "db:migrate": "pnpm --filter @firepulse/api db:migrate",
     "db:seed": "psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -f db/seed/dev_seed.sql",
     "basemap:build": "node scripts/build-basemap.mjs",
     "spread:assets": "pnpm --filter @firepulse/api exec tsx src/spread/assets.ts"

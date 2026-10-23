@@ -2,7 +2,10 @@ import {
   bufferedHull,
   centroid,
   dbscan,
+  estimateConfirmation,
+  EVIDENCE_WINDOW_MAX_MIN,
   fuseConfidence,
+  inEvidenceWindow,
   haversineKm,
   km2ToAcres,
   pointInRing,
@@ -15,15 +18,21 @@ import {
   type SourceTag,
 } from "@firepulse/protocol";
 import { destination } from "@firepulse/protocol";
-import type { Store } from "../store/types.js";
+import type { MergeRecord, Store } from "../store/types.js";
 import type { RedisCache } from "../store/redis.js";
 import { cellOf, cellsOf, neighborhood } from "../h3.js";
 import type { AppConfig } from "../config.js";
 import type { Logger } from "pino";
+import { HeatMask } from "./heatMask.js";
+import { isGenericName, whereName, type PlaceNamer } from "./placeNames.js";
 
 const DETECTION_KINDS = new Set<RawSignal["kind"]>(["thermal", "dispatch", "camera", "crowd"]);
 const CONTEXT_KINDS = new Set<RawSignal["kind"]>(["airquality", "weather"]);
 const GROWTH_REF_MS = 10 * 60_000;
+/** Smoke at an air monitor this close counts as context for a cluster. */
+const AIR_MONITOR_REACH_KM = 25;
+/** Farthest an official fire can be from a cluster and still cover it (name match). */
+const OFFICIAL_REACH_KM = 12;
 const MAX_HISTORY = 288;
 const MAX_CELLS = 220;
 
@@ -57,7 +66,9 @@ export interface FusionResult extends FusionDelta {
  * Early-Estimate Fusion Engine.
  *
  * One pass:
- *   1. Load the trailing evidence window (default 30 min).
+ *   1. Load the trailing evidence window. Each source has its own (see
+ *      `windowMin` in the source profiles): an hour for dispatch, two for
+ *      GOES, 30 h for polar-orbiting VIIRS/MODIS.
  *   2. Spatial DBSCAN over *detection* signals in metric space (2 km).
  *   3. Attach tier-3 context (PM2.5, RAWS) to the nearest cluster.
  *   4. Match each cluster to an existing estimate (H3 overlap → signal
@@ -83,17 +94,28 @@ export class FusionEngine {
     private readonly cfg: AppConfig,
     private readonly log: Logger,
     private readonly cache?: RedisCache,
+    private readonly heatMask: HeatMask = HeatMask.empty(),
+    private readonly namer?: PlaceNamer,
   ) {}
 
-  async hydrate(): Promise<void> {
+  async hydrate(now = Date.now()): Promise<void> {
     const active = await this.store.activeIncidents();
     for (const f of active) {
       const p = f.properties;
+      // Rows saved before confirmation was stored are treated as unconfirmed
+      // until a pass sees them again.
+      if (p.kind === "estimated" && !p.confirmation) p.confirmation = "single";
       const track: Track = {
         feature: f,
         signature: signatureOf(f),
         firstSeen: Date.parse(p.firstDetectedAt),
-        lastSignalAt: Date.parse(p.updatedAt),
+        // "Last seen by fusion", not last evidence: satellite evidence is
+        // often hours old, and the next pass must still match this track.
+        // Tracks whose evidence is older than any window expire right away.
+        lastSignalAt:
+          Date.parse(p.updatedAt) >= now - EVIDENCE_WINDOW_MAX_MIN * 60_000 || p.kind === "official"
+            ? now
+            : Date.parse(p.updatedAt),
         peakConfidence: p.confidence,
         memberIds: new Set(),
         history: [
@@ -108,6 +130,7 @@ export class FusionEngine {
         rings: outerRings(f),
       };
       this.tracks.set(f.id, track);
+      this.lastPersisted.set(f.id, track.signature);
       this.indexTrack(track);
     }
     const merges = await this.store.merges().catch(() => []);
@@ -145,13 +168,19 @@ export class FusionEngine {
 
   async run(now = Date.now()): Promise<FusionResult> {
     const started = performance.now();
-    const windowMs = this.cfg.fusion.windowMin * 60_000;
+    const windowMs = EVIDENCE_WINDOW_MAX_MIN * 60_000;
     // Never let future-dated observations (clock skew, bad sensor time)
     // influence the current estimate.
-    const signals = await this.store.recentSignals(now - windowMs, now + 5_000);
+    const signals = (await this.store.recentSignals(now - windowMs, now + 5_000)).filter((s) =>
+      inEvidenceWindow(s, now),
+    );
     const officialFeatures = [...this.tracks.values()]
       .map((t) => t.feature)
       .filter((f) => f.properties.kind === "official");
+    // Every "already covered" rule below needs the cluster within 12 km of
+    // the official fire; boxes padded by that much rule most pairs out
+    // before any polygon test.
+    const officialBoxes = officialFeatures.map((o) => padBBoxKm(featureBBox(o), OFFICIAL_REACH_KM));
 
     const detections = signals.filter((s) => DETECTION_KINDS.has(s.kind));
     const context = signals.filter((s) => CONTEXT_KINDS.has(s.kind));
@@ -172,10 +201,14 @@ export class FusionEngine {
       if (members.length === 0) continue;
       const attached = attachContext(cluster.centroid, context, this.cfg.fusion.radiusKm * 2);
       if (!isPublishable(members, attached, this.cfg)) continue;
+      // Satellite-only heat on a refinery or gas flare is not a fire.
+      if (isThermalOnly(members) && this.heatMask.coversMost(members)) continue;
 
       const c = centroid(members);
       const clusterName = nameFor(members, c);
-      const insideOfficial = officialFeatures.find((o) => {
+      const clusterBox = bboxOfPoints(members);
+      const insideOfficial = officialFeatures.find((o, i) => {
+        if (!bboxesIntersect(clusterBox, officialBoxes[i]!)) return false;
         const rings = outerRings(o);
         if (pointInRings(c, rings)) return true;
         // An official polygon's own detections must never seed a "new" zone,
@@ -183,7 +216,7 @@ export class FusionEngine {
         if (members.some((m) => pointInRings(m, rings))) return true;
         const distanceKm = haversineKm(c, { lon: o.properties.lon, lat: o.properties.lat });
         if (
-          distanceKm < 12 &&
+          distanceKm < OFFICIAL_REACH_KM &&
           normalizeName(clusterName) === normalizeName(o.properties.name)
         ) {
           return true;
@@ -195,7 +228,7 @@ export class FusionEngine {
 
       qualified++;
       const evidence = [...members, ...attached];
-      const track = this.matchTrack(c, members, now);
+      const track = this.matchTrack(c, members);
       const evidenceSignals = evidence.map((s) => ({
         source: s.source,
         observedAt: s.observedAt,
@@ -243,7 +276,14 @@ export class FusionEngine {
       const nextHistory = [...history, sample].slice(-MAX_HISTORY);
       const growth = growthRates(nextHistory, now);
 
-      const name = track?.feature.properties.name ?? nameFor(members, c);
+      const confirmation = estimateConfirmation(members, track?.feature.properties.confirmation);
+      const where = this.namer?.describe(c);
+      const previous = track?.feature.properties.name;
+      // Keep a real name (dispatch, simulator); replace ones the engine made up.
+      const name =
+        previous && !isGenericName(previous)
+          ? previous
+          : ((where && whereName(where, confirmation !== "single")) ?? previous ?? nameFor(members, c));
       const props: IncidentProperties = {
         id: track?.feature.id ?? crypto.randomUUID(),
         kind: "estimated",
@@ -263,9 +303,10 @@ export class FusionEngine {
         growthScore: growthScore(growth, fused.breakdown.score, members),
         hotspotCount: members.filter((m) => m.kind === "thermal").length,
         evidence: fused.contributions,
+        confirmation,
         cause: causeFor(members),
-        county: stringMeta(members, "county"),
-        state: stringMeta(members, "state"),
+        county: stringMeta(members, "county") ?? where?.county,
+        state: stringMeta(members, "state") ?? where?.state,
         cells: cellList,
         lat: c.lat,
         lon: c.lon,
@@ -294,6 +335,15 @@ export class FusionEngine {
       seen.add(props.id);
       if (track) updated++;
       else created++;
+    }
+
+    // ---- persist estimates that changed (the store is the system of record) --
+    const changed = [...seen]
+      .map((id) => this.tracks.get(id))
+      .filter((t): t is Track => Boolean(t) && t!.signature !== this.lastPersisted.get(t!.feature.id));
+    if (changed.length > 0) {
+      await this.store.upsertIncidents(changed.map((t) => t.feature));
+      for (const t of changed) this.lastPersisted.set(t.feature.id, t.signature);
     }
 
     // ---- official merge pass: ground truth absorbs its precursors --------
@@ -355,7 +405,7 @@ export class FusionEngine {
       incidentsUpdated: updated,
       incidentsMerged: result.merged,
       radiusM: Math.round(this.cfg.fusion.radiusKm * 1000),
-      windowMinutes: this.cfg.fusion.windowMin,
+      windowMinutes: EVIDENCE_WINDOW_MAX_MIN,
     });
     if (created > 0) {
       this.log.info({ created, clusters: qualified, ms: result.durationMs }, "fusion pass created estimates");
@@ -364,6 +414,8 @@ export class FusionEngine {
   }
 
   private lastPublished = new Map<string, string>();
+  /** Signature last written to the store, per track. */
+  private lastPersisted = new Map<string, string>();
 
   /* ------------------------------------------------------------------ */
   /* Official ingestion (called by the official adapter)                  */
@@ -437,6 +489,32 @@ export class FusionEngine {
     return { upserts, removes: [] };
   }
 
+  /**
+   * Drops official incidents that a complete feed snapshot no longer lists
+   * (declared out or withdrawn). A snapshot that suddenly lost more than
+   * half of them is treated as an upstream glitch and ignored.
+   */
+  async retireOfficial(present: Set<string>, idPrefix: string): Promise<string[]> {
+    const current: string[] = [];
+    for (const [id, track] of this.tracks) {
+      if (track.feature.properties.kind === "official" && id.startsWith(idPrefix)) current.push(id);
+    }
+    const gone = current.filter((id) => !present.has(id));
+    if (gone.length === 0) return [];
+    if (gone.length > current.length / 2 && current.length >= 10) {
+      this.log.warn(
+        { missing: gone.length, current: current.length, idPrefix },
+        "official snapshot is missing most incidents; not retiring any",
+      );
+      return [];
+    }
+    await this.store.deactivateIncidents(gone, "expired");
+    if (this.cache) await this.cache.removeIncidents(gone);
+    for (const id of gone) this.dropTrack(id);
+    this.log.info({ retired: gone.length, idPrefix }, "official incidents no longer listed");
+    return gone;
+  }
+
   private async mergeEstimatesIntoOfficial(
     official: IncidentFeature[],
     now: number,
@@ -444,17 +522,22 @@ export class FusionEngine {
     if (official.length === 0) return { count: 0, removed: [] };
     let count = 0;
     const removed: string[] = [];
-    const touchedOfficial: IncidentFeature[] = [];
+    const touchedOfficial = new Map<string, IncidentFeature>();
+    const mergedEstimates: IncidentFeature[] = [];
+    const records: MergeRecord[] = [];
 
     for (const officialFeature of official) {
       const o = officialFeature.properties;
       const oRings = outerRings(officialFeature);
       const oCentroid = { lon: o.lon, lat: o.lat };
+      // A merge needs the estimate inside the perimeter or within matchKm.
+      const reach = padBBoxKm(featureBBox(officialFeature), this.cfg.fusion.matchKm);
 
       for (const [id, track] of this.tracks) {
         const e = track.feature.properties;
         if (e.kind !== "estimated" || e.mergedInto) continue;
         const eCentroid = { lon: e.lon, lat: e.lat };
+        if (!bboxesIntersect([e.lon, e.lat, e.lon, e.lat], reach)) continue;
         const distance = haversineKm(eCentroid, oCentroid);
         const inside = pointInRings(eCentroid, oRings);
         if (!inside && distance > this.cfg.fusion.matchKm) continue;
@@ -493,9 +576,10 @@ export class FusionEngine {
           peakConfidence: track.peakConfidence,
         };
         track.signature = signatureOf(track.feature);
-        touchedOfficial.push(track.feature);
+        touchedOfficial.set(officialFeature.id, officialFeature);
+        mergedEstimates.push(track.feature);
 
-        await this.store.recordMerge({
+        records.push({
           estimateId: e.id,
           officialId: o.id,
           mergedAt: new Date(now).toISOString(),
@@ -518,12 +602,20 @@ export class FusionEngine {
       }
     }
 
-    if (touchedOfficial.length > 0) {
-      await this.store.upsertIncidents(touchedOfficial);
-      for (const f of touchedOfficial) this.lastPublished.set(f.id, signatureOf(f));
-      if (this.cache) await this.cache.upsertIncidents(touchedOfficial);
+    if (records.length > 0) {
+      const official = [...touchedOfficial.values()];
+      // Estimates and official fires first, so the merge ledger's keys exist.
+      await this.store.upsertIncidents([...mergedEstimates, ...official]);
+      for (const r of records) await this.store.recordMerge(r);
+      for (const f of official) {
+        const track = this.tracks.get(f.id);
+        if (track) track.signature = signatureOf(f);
+        this.lastPublished.set(f.id, signatureOf(f));
+        this.lastPersisted.set(f.id, signatureOf(f));
+      }
+      if (this.cache) await this.cache.upsertIncidents(official);
       // official features must be re-published with the precursor attached
-      this.pendingOfficialUpserts.push(...touchedOfficial);
+      this.pendingOfficialUpserts.push(...official);
     }
 
     if (removed.length > 0) {
@@ -587,20 +679,21 @@ export class FusionEngine {
       if (p.confidence < minConfidence) continue;
       if (!featureIntersectsBBox(f, bbox)) continue;
       out.push(f);
-      if (out.length >= (opts.limit ?? 900)) break;
     }
-    return out;
+    // When the budget can't hold everything, keep what matters most:
+    // official fires, then confirmed estimates, then single-pass heat.
+    const limit = opts.limit ?? 900;
+    if (out.length <= limit) return out;
+    const rank = (f: IncidentFeature) =>
+      f.properties.kind === "official" ? 0 : f.properties.confirmation === "single" ? 2 : 1;
+    return out.sort((a, b) => rank(a) - rank(b) || b.properties.confidence - a.properties.confidence).slice(0, limit);
   }
 
   /* ------------------------------------------------------------------ */
   /* Internals                                                           */
   /* ------------------------------------------------------------------ */
 
-  private matchTrack(
-    c: { lon: number; lat: number },
-    members: RawSignal[],
-    now: number,
-  ): Track | undefined {
+  private matchTrack(c: { lon: number; lat: number }, members: RawSignal[]): Track | undefined {
     const candidates = new Map<string, number>();
     for (const cell of cellsOf(members)) {
       for (const id of this.cellIndex.get(cell) ?? []) {
@@ -613,8 +706,9 @@ export class FusionEngine {
     for (const [id, overlap] of candidates) {
       const track = this.tracks.get(id);
       if (!track) continue;
+      // No staleness check: expiry runs at the end of every pass, so any
+      // track still here is alive, even if the last pass was hours ago.
       if (track.mergedAt) continue;
-      if (now - track.lastSignalAt > this.cfg.fusion.windowMin * 2 * 60_000) continue;
       const distance = haversineKm(c, { lon: track.feature.properties.lon, lat: track.feature.properties.lat });
       if (distance > this.cfg.fusion.matchKm) continue;
       const memberHits = members.filter((m) => track.memberIds.has(m.id)).length;
@@ -647,6 +741,7 @@ export class FusionEngine {
     this.unindexTrack(track);
     this.tracks.delete(id);
     this.lastPublished.delete(id);
+    this.lastPersisted.delete(id);
   }
 }
 
@@ -663,7 +758,7 @@ function isPublishable(
   const modalities = new Set(profiles.map((p) => p.modality));
   const thermal = members.filter((m) => m.kind === "thermal");
   const strong = members.some((m) =>
-    ["cad", "goes16", "goes18", "viirs", "alertca", "calfire"].includes(m.source),
+    ["cad", "goes16", "goes18", "goes19", "viirs", "alertca", "calfire"].includes(m.source),
   );
   const frp = thermal.reduce((sum, m) => sum + (m.frp ?? 0), 0);
 
@@ -681,12 +776,22 @@ function isPublishable(
   return members.length + context.length >= 2;
 }
 
+function isThermalOnly(members: RawSignal[]): boolean {
+  return members.every((m) => m.kind === "thermal");
+}
+
 function attachContext(
   c: { lon: number; lat: number },
   context: RawSignal[],
   radiusKm: number,
 ): RawSignal[] {
-  return context.filter((s) => haversineKm(c, s) <= radiusKm);
+  return context.filter((s) => {
+    // Area alerts (red flag zones) apply to everything inside them.
+    const polygon = s.meta?.polygon;
+    if (Array.isArray(polygon) && polygon.length >= 4) return pointInRing(c, polygon as Ring);
+    // Air monitors are sparse; smoke reaches them from further away.
+    return haversineKm(c, s) <= (s.kind === "airquality" ? AIR_MONITOR_REACH_KM : radiusKm);
+  });
 }
 
 function aggregateSources(signals: RawSignal[]): SourceTag[] {
@@ -784,12 +889,13 @@ function nameFor(signals: RawSignal[], c: { lon: number; lat: number }): string 
     const named = s.meta?.incidentName;
     if (typeof named === "string" && named.length > 0) return named;
   }
+  // Satellite labels ("VIIRS 375m 4 MW") describe a pixel, not a fire.
   for (const s of signals) {
-    if (s.label && s.label.length > 2) return s.label;
+    if (s.kind !== "thermal" && s.label && s.label.length > 2) return s.label;
   }
   const ns = c.lat >= 0 ? "N" : "S";
   const ew = c.lon >= 0 ? "E" : "W";
-  return `Early Zone ${Math.abs(c.lat).toFixed(2)}${ns} ${Math.abs(c.lon).toFixed(2)}${ew}`;
+  return `Fire at ${Math.abs(c.lat).toFixed(2)}${ns} ${Math.abs(c.lon).toFixed(2)}${ew}`;
 }
 
 export function outerRings(f: IncidentFeature): Ring[] {
@@ -833,6 +939,32 @@ export function featureBBox(f: IncidentFeature): [number, number, number, number
   return [minLon, minLat, maxLon, maxLat];
 }
 
+type BBox = [number, number, number, number];
+
+function bboxOfPoints(points: { lon: number; lat: number }[]): BBox {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const p of points) {
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+  }
+  return [minLon, minLat, maxLon, maxLat];
+}
+
+function padBBoxKm(b: BBox, km: number): BBox {
+  const dLat = km / 110.574;
+  const dLon = km / (111.32 * Math.max(0.05, Math.cos((((b[1] + b[3]) / 2) * Math.PI) / 180)));
+  return [b[0] - dLon, b[1] - dLat, b[2] + dLon, b[3] + dLat];
+}
+
+function bboxesIntersect(a: BBox, b: BBox): boolean {
+  return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+}
+
 export function featureIntersectsBBox(f: IncidentFeature, bbox: [number, number, number, number]): boolean {
   const [minLon, minLat, maxLon, maxLat] = featureBBox(f);
   return !(maxLon < bbox[0] || minLon > bbox[2] || maxLat < bbox[1] || minLat > bbox[3]);
@@ -847,6 +979,7 @@ export function signatureOf(f: IncidentFeature): string {
   const ev = p.evidence.map((e) => `${e.source}:${e.count}`).join(",");
   return [
     p.kind,
+    p.name,
     p.status,
     p.confidence,
     Math.round(p.areaAcres),
@@ -856,6 +989,7 @@ export function signatureOf(f: IncidentFeature): string {
     ev,
     p.precursor?.leadTimeMinutes ?? "",
     p.mergedInto ?? "",
+    p.confirmation ?? "",
     Math.round(p.confidenceBreakdown.freshness * 100),
   ].join("|");
 }

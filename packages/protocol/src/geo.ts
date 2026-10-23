@@ -198,6 +198,80 @@ export function pointInRing(p: LngLat, ring: Ring): boolean {
   return inside;
 }
 
+/**
+ * Distance from a point to a ring's boundary in km, or 0 when the point is
+ * inside. Local equirectangular projection: accurate to well under 1% at
+ * the tens-of-kilometres scale this is used for.
+ */
+export function distanceToRingKm(p: LngLat, ring: Ring): number {
+  if (ring.length === 0) return Infinity;
+  if (ring.length >= 4 && pointInRing(p, ring)) return 0;
+  const kx = metersPerDegLon(p.lat) / 1000;
+  const ky = metersPerDegLat / 1000;
+  let best = Infinity;
+  for (let i = 0; i < ring.length; i++) {
+    const [ax, ay] = ring[i]!;
+    const [bx, by] = ring[Math.min(i + 1, ring.length - 1)]!;
+    const x1 = (ax - p.lon) * kx;
+    const y1 = (ay - p.lat) * ky;
+    const dx = (bx - ax) * kx;
+    const dy = (by - ay) * ky;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 > 0 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / len2)) : 0;
+    best = Math.min(best, Math.hypot(x1 + t * dx, y1 + t * dy));
+  }
+  return best;
+}
+
+const COMPASS = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+
+/** 16-point compass name for a bearing in degrees. */
+export function compassPoint(bearing: number): string {
+  const i = Math.round((((bearing % 360) + 360) % 360) / 22.5) % 16;
+  return COMPASS[i]!;
+}
+
+/**
+ * Douglas-Peucker simplification of a closed ring, tolerance in degrees.
+ * Keeps the first and last vertex, so the ring stays closed.
+ */
+export function simplifyRing(ring: Ring, toleranceDeg: number): Ring {
+  if (ring.length <= 4) return ring;
+  const keep = new Uint8Array(ring.length);
+  keep[0] = 1;
+  keep[ring.length - 1] = 1;
+  const stack: [number, number][] = [[0, ring.length - 1]];
+  const tol2 = toleranceDeg * toleranceDeg;
+  while (stack.length > 0) {
+    const [first, last] = stack.pop()!;
+    const [ax, ay] = ring[first]!;
+    const [bx, by] = ring[last]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let maxD = -1;
+    let index = -1;
+    for (let i = first + 1; i < last; i++) {
+      const [px, py] = ring[i]!;
+      const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+      const ex = px - (ax + t * dx);
+      const ey = py - (ay + t * dy);
+      const d = ex * ex + ey * ey;
+      if (d > maxD) {
+        maxD = d;
+        index = i;
+      }
+    }
+    if (index >= 0 && maxD > tol2) {
+      keep[index] = 1;
+      stack.push([first, index], [index, last]);
+    }
+  }
+  const out = ring.filter((_, i) => keep[i] === 1);
+  // A ring needs at least four positions; fall back to the original.
+  return out.length >= 4 ? out : ring;
+}
+
 /** Approximate spherical area of a ring, km². */
 export function ringAreaSqKm(ring: Ring): number {
   if (ring.length < 3) return 0;

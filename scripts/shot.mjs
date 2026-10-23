@@ -17,7 +17,7 @@ const waitMs = Number(process.argv[4] ?? 9000);
 mkdirSync(dirname(out), { recursive: true });
 
 const browser = await puppeteer.launch({
-  executablePath: "/usr/bin/chromium-browser",
+  executablePath: process.env.CHROME_PATH ?? "/usr/bin/chromium-browser",
   headless: "new",
   args: [
     "--no-sandbox",

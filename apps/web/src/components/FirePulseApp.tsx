@@ -2,13 +2,18 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { IncidentDetail, IncidentFeature } from "@firepulse/protocol";
+import type { IncidentDetail, IncidentFeature, NearbyFire } from "@firepulse/protocol";
 import { apiGet, useLiveFeed, useSpread, type TimelineResponse } from "@/lib/store";
 import { selectHotspots, selectIncidents, type FeedTab, type KindFilter } from "@/lib/select";
 import type { MapType } from "@/lib/places";
+import { useNearby, usePlaces, type WatchedPlace } from "@/lib/myplaces";
+import { registerServiceWorker, useAccount, usePush } from "@/lib/account";
 import type { LayerFlags } from "./MapCanvas";
 import AppHeader from "./AppHeader";
-import Sidebar from "./Sidebar";
+import Sidebar, { type SidebarMode } from "./Sidebar";
+import NearbyPanel from "./NearbyPanel";
+import AccountPanel from "./AccountPanel";
+import ReportSmoke from "./ReportSmoke";
 import DetailPanel from "./DetailPanel";
 import Timeline from "./Timeline";
 import { Icon } from "./ui";
@@ -20,6 +25,9 @@ const MapCanvas = dynamic(() => import("./MapCanvas"), {
 
 const DAY = 24 * 3_600_000;
 const MAP_KEY = "firepulse.mapType";
+const MODE_KEY = "firepulse.sidebarMode";
+/** How long a fire picked from "near you" may take to arrive in the viewport feed. */
+const PENDING_SELECT_MS = 15_000;
 
 function isMapType(value: string | null): value is MapType {
   return value === "atlas" || value === "ink" || value === "topo" || value === "sat";
@@ -71,7 +79,25 @@ export default function FirePulseApp() {
     hex: false,
     labels: true,
     spread: true,
+    alerts: true,
   });
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
+    if (typeof window === "undefined") return "near";
+    try {
+      return window.localStorage.getItem(MODE_KEY) === "all" ? "all" : "near";
+    } catch {
+      return "near";
+    }
+  });
+  const [focusArea, setFocusArea] = useState<{ lon: number; lat: number; radiusKm: number; nonce: number } | null>(null);
+  const [pendingSelect, setPendingSelect] = useState<{ id: string; at: number } | null>(null);
+  const account = useAccount();
+  const signedIn = Boolean(account.state?.user);
+  const push = usePush(account.state?.pushPublicKey ?? null, signedIn);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const placesApi = usePlaces(signedIn);
+  const nearby = useNearby(placesApi.places);
 
   const now = clock + store.serverSkewMs;
 
@@ -88,6 +114,14 @@ export default function FirePulseApp() {
   useEffect(() => {
     window.localStorage.setItem(MAP_KEY, mapType);
   }, [mapType]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MODE_KEY, sidebarMode);
+    } catch {
+      /* remembered for this visit only */
+    }
+  }, [sidebarMode]);
 
   /* ------------------------------ feeds -------------------------------- */
   useEffect(() => {
@@ -169,9 +203,19 @@ export default function FirePulseApp() {
   );
 
   const mapIncidents = useMemo(
-    () => selectIncidents(store, { cursor, minConfidence: 0, kind: "all", tab: "all" }),
+    () => selectIncidents(store, { cursor, minConfidence: 0, kind: "all", tab: "all", includeUnconfirmed: true }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version, cursor],
+  );
+
+  const hazards = useMemo(
+    () =>
+      [...store.hazards.values()].filter((a) => {
+        const end = Math.max(Date.parse(a.properties.expires) || 0, Date.parse(a.properties.ends ?? "") || 0);
+        return end >= Date.now();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [version],
   );
 
   const hotspots = useMemo(
@@ -185,11 +229,23 @@ export default function FirePulseApp() {
     let official = 0;
     for (const f of mapIncidents) {
       if (f.properties.kind === "official") official++;
-      else early++;
+      // Single-pass satellite heat is on the map but isn't counted as a fire.
+      else if (f.properties.confirmation !== "single") early++;
     }
     return { early, official, hotspots: hotspots.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapIncidents, hotspots.length]);
+
+  const nearbyCounts = useMemo(() => {
+    let alerts = 0;
+    let fires = 0;
+    for (const p of placesApi.places) {
+      const summary = nearby[p.id];
+      alerts += summary?.alerts.length ?? 0;
+      fires += summary?.fires.filter((f) => f.cause !== "prescribed").length ?? 0;
+    }
+    return { alerts, fires };
+  }, [nearby, placesApi.places]);
 
   const selectedIncident: IncidentFeature | null = selectedId
     ? (store.incidents.get(selectedId) ?? null)
@@ -252,6 +308,102 @@ export default function FirePulseApp() {
     }
   }, []);
 
+  const focusOn = useCallback((area: { lon: number; lat: number; radiusKm: number }) => {
+    setFocusArea((prev) => ({ ...area, nonce: (prev?.nonce ?? 0) + 1 }));
+  }, []);
+
+  // A fire picked from "near you" can be outside the current viewport, so
+  // the live feed hasn't sent it yet: fly there, then select it on arrival.
+  const handleNearbyFire = useCallback(
+    (fire: NearbyFire) => {
+      if (store.incidents.has(fire.id)) {
+        handleSelect(fire.id, true);
+        return;
+      }
+      setPendingSelect({ id: fire.id, at: Date.now() });
+      focusOn({ lon: fire.lon, lat: fire.lat, radiusKm: 8 });
+    },
+    [store, handleSelect, focusOn],
+  );
+
+  useEffect(() => {
+    if (!pendingSelect) return;
+    if (store.incidents.has(pendingSelect.id)) {
+      handleSelect(pendingSelect.id, true);
+      setPendingSelect(null);
+    } else if (Date.now() - pendingSelect.at > PENDING_SELECT_MS) {
+      setPendingSelect(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version, pendingSelect]);
+
+  const handleAddPlace = useCallback(
+    (place: { name: string; lat: number; lon: number }) => {
+      placesApi
+        .add(place)
+        .then(focusOn)
+        .catch(() => undefined);
+    },
+    [placesApi, focusOn],
+  );
+
+  /* ---------------------- deep links (alerts, sign-in) ------------------ */
+  const placesRef = useRef(placesApi.places);
+  placesRef.current = placesApi.places;
+
+  const openLink = useCallback(
+    (search: string) => {
+      const q = new URLSearchParams(search);
+      const placeId = q.get("place");
+      const incidentId = q.get("incident");
+      if (placeId || incidentId) {
+        setSidebarMode("near");
+        setSidebarOpen(window.innerWidth > 900);
+      }
+      const place = placeId ? placesRef.current.find((p) => p.id === placeId) : undefined;
+      if (incidentId) {
+        if (store.incidents.has(incidentId)) {
+          handleSelect(incidentId, true);
+        } else {
+          // Off screen: find where it is, fly there, select it when it arrives.
+          setPendingSelect({ id: incidentId, at: Date.now() });
+          apiGet<{ incident?: IncidentFeature }>(`/api/v1/incidents/${encodeURIComponent(incidentId)}`)
+            .then((d) => {
+              const p = d.incident?.properties;
+              if (p) focusOn({ lon: p.lon, lat: p.lat, radiusKm: 8 });
+            })
+            .catch(() => (place ? focusOn(place) : undefined));
+        }
+      } else if (place) {
+        focusOn(place);
+      }
+    },
+    [store, handleSelect, focusOn],
+  );
+
+  useEffect(() => {
+    void registerServiceWorker();
+    const q = new URLSearchParams(window.location.search);
+    const err = q.get("auth_error");
+    if (err) {
+      setAuthError(err);
+      setAccountOpen(true);
+    }
+    if (q.has("place") || q.has("incident") || err) {
+      // Wait for places to load before resolving a place link.
+      const search = window.location.search;
+      window.setTimeout(() => openLink(search), 1200);
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { type?: string; url?: string } | null;
+      if (data?.type === "open" && data.url) openLink(new URL(data.url, window.location.origin).search);
+    };
+    navigator.serviceWorker?.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const toggleLayer = useCallback((key: keyof LayerFlags) => {
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
@@ -296,6 +448,18 @@ export default function FirePulseApp() {
         medianLead={merges.medianLeadTimeMinutes}
         mergeCount={merges.count}
         config={store.config}
+        now={now}
+        accountSlot={
+          <button
+            type="button"
+            className={`btn ${signedIn ? "" : "btn-primary"}`}
+            onClick={() => setAccountOpen(true)}
+            title={signedIn ? "Alerts and account" : "Sign in to get alerts"}
+          >
+            <Icon name="pin" size={12} />
+            <span className="hide-sm">{signedIn ? (push.subscribed ? "Alerts on" : "Alerts off") : "Get alerts"}</span>
+          </button>
+        }
       />
 
       <div className={`main ${sidebarOpen ? "" : "no-sidebar"} ${showDetail ? "inspect" : ""}`}>
@@ -313,6 +477,49 @@ export default function FirePulseApp() {
             latencyMs={feed.latencyMs}
             ingestRate={store.stats?.ingestRate ?? 0}
             config={store.config}
+            sources={store.stats?.sources}
+            mode={sidebarMode}
+            onMode={setSidebarMode}
+            placeCount={placesApi.places.length}
+            nearby={
+              <NearbyPanel
+                places={placesApi.places}
+                nearby={nearby}
+                now={now}
+                full={placesApi.full}
+                onAdd={handleAddPlace}
+                onRemove={placesApi.remove}
+                onRadius={placesApi.setRadius}
+                onFocusPlace={(p: WatchedPlace) => focusOn(p)}
+                onSelectFire={handleNearbyFire}
+                report={<ReportSmoke signedIn={signedIn} places={placesApi.places} onSignIn={() => setAccountOpen(true)} />}
+                cta={
+                  account.unavailable || placesApi.places.length === 0 ? null : !signedIn ? (
+                    <div className="np-cta">
+                      <span>Get an alert on this device when a fire or an evacuation order comes near these places.</span>
+                      <button type="button" className="btn btn-primary" onClick={() => setAccountOpen(true)}>
+                        Create a free account
+                      </button>
+                    </div>
+                  ) : !push.subscribed ? (
+                    <div className="np-cta">
+                      <span>
+                        {push.needsInstall
+                          ? "To get alerts on iPhone, add FirePulse to your home screen first."
+                          : "Alerts are off on this device."}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => (push.needsInstall ? setAccountOpen(true) : void push.enable())}
+                      >
+                        {push.needsInstall ? "Show me how" : "Turn on alerts"}
+                      </button>
+                    </div>
+                  ) : null
+                }
+              />
+            }
             onTab={setTab}
             onKind={setKind}
             onConfidence={setMinConfidence}
@@ -332,6 +539,9 @@ export default function FirePulseApp() {
             layers={layers}
             mapType={mapType}
             focusNonce={focusNonce}
+            hazards={hazards}
+            places={placesApi.places}
+            focusArea={focusArea}
             onSelect={(id) => handleSelect(id)}
             onViewport={feed.subscribeViewport}
           />
@@ -349,11 +559,29 @@ export default function FirePulseApp() {
                 background: "var(--surface)",
               }}
             >
-              <Icon name="activity" size={12} />
-              Incident feed
-              <span className="mono" style={{ color: "var(--accent)", marginLeft: 2 }}>
-                {counts.early}
-              </span>
+              {sidebarMode === "near" ? (
+                <>
+                  <Icon name="pin" size={12} />
+                  Near you
+                  {nearbyCounts.alerts > 0 ? (
+                    <span className="mono" style={{ color: "var(--danger)", marginLeft: 2 }}>
+                      {nearbyCounts.alerts} {nearbyCounts.alerts === 1 ? "alert" : "alerts"}
+                    </span>
+                  ) : placesApi.places.length > 0 ? (
+                    <span className="mono" style={{ color: "var(--muted)", marginLeft: 2 }}>
+                      {nearbyCounts.fires}
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Icon name="activity" size={12} />
+                  Incident feed
+                  <span className="mono" style={{ color: "var(--accent)", marginLeft: 2 }}>
+                    {counts.early}
+                  </span>
+                </>
+              )}
             </button>
           ) : null}
         </div>
@@ -432,6 +660,19 @@ export default function FirePulseApp() {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {accountOpen ? (
+        <AccountPanel
+          account={account}
+          push={push}
+          now={now}
+          error={authError}
+          onClose={() => {
+            setAccountOpen(false);
+            setAuthError(null);
+          }}
+        />
       ) : null}
 
       <style>{`@keyframes loadingBar { 0% { transform: translateX(-100%); } 100% { transform: translateX(360%); } }`}</style>
