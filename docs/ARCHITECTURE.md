@@ -207,15 +207,15 @@ idempotent.
 
 Source: [`apps/api/src/fusion/engine.ts`](../apps/api/src/fusion/engine.ts).
 
-Every 4 s, one pass:
+Every 4 s in simulation, and in live mode after each batch arrives (plus a 60 s timer), one pass:
 
 ```
-load trailing 30 min of evidence
+load each source's evidence window (30 h VIIRS/MODIS, 2 h GOES, ~1 h dispatch)
         │
         ├─▶ DBSCAN(eps=2 km, minPts=1) over detection signals (5070 meters)
         │       thermal · dispatch · camera · crowd
         │
-        ├─▶ attach tier-3 context (PM2.5, RAWS) within 4 km
+        ├─▶ attach tier-3 context: PM2.5, RAWS within 4 km; red flag areas containing the cluster
         │
         ├─▶ publishability gate
         │       · drop lone thermal < 3 MW with no corroboration
@@ -436,12 +436,11 @@ DATA_MODE=simulation            # simulation | live | hybrid
 DATABASE_URL=postgres://...     # omit → MemoryStore
 REDIS_URL=redis://...           # omit → no cache/fan-out
 FUSION_RADIUS_KM=2
-FUSION_WINDOW_MIN=30
 FUSION_INTERVAL_MS=4000
 HOTSPOT_RETENTION_HOURS=24
 INGEST_WEBHOOK_SECRET=...       # enables HMAC verification
 FIRMS_MAP_KEY=...               # live Tier-2
-WFIGS_URL=...
+FIREPULSE_USER_AGENT=...        # contact for NWS / Open-Meteo
 # Web
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8790
 ```

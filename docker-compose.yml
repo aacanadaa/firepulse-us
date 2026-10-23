@@ -34,7 +34,9 @@ services:
     environment:
       PORT: 8790
       SPREAD_USER_AGENT: ${SPREAD_USER_AGENT:-}
-      DATA_MODE: simulation
+      FIREPULSE_USER_AGENT: ${FIREPULSE_USER_AGENT:-}
+      DATA_MODE: ${DATA_MODE:-live}
+      FIRMS_MAP_KEY: ${FIRMS_MAP_KEY:-}
       DATABASE_URL: postgres://firepulse:firepulse@db:5432/firepulse
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: "*"

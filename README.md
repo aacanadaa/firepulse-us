@@ -117,7 +117,7 @@ Tier 2  GOES-16/18 · VIIRS · MODIS      ├─▶ ingestion bus ─▶ PostGIS
 Tier 3  PM2.5 · RAWS · Red Flag         │        │
 Tier 4  NIFC WFIGS · CAL FIRE ──────────┘        ▼
                                           fusion engine (4 s)
-                                          DBSCAN 2 km / 30 min
+                                          DBSCAN 2 km / per-source windows
                                           noisy-OR confidence
                                           buffered convex hull
                                           H3 identity · merge · diff
@@ -203,10 +203,28 @@ pnpm dev
 
 ```bash
 export DATA_MODE=live
-export FIRMS_MAP_KEY=...      # NASA FIRMS area API
-# WFIGS and NWS need no key
+export FIRMS_MAP_KEY=...      # NASA FIRMS area API (free key)
+export FIREPULSE_USER_AGENT="FirePulse/1.0 (you@example.com)"
+# WFIGS, NWS and Open-Meteo need no key
 pnpm dev:api
 ```
+
+| Feed | What it provides | Cadence |
+|---|---|---|
+| NASA FIRMS VIIRS (S-NPP, NOAA-20, NOAA-21) + MODIS | satellite heat detections, 1-3 h after each pass | 10 min |
+| NIFC WFIGS incidents + perimeters | official fires, perimeters, containment, prescribed burns | 5 min |
+| NWS alerts | evacuation orders, fire warnings, red flag / fire weather, smoke and air quality, with zone outlines | 5 min |
+| Open-Meteo | 10 m wind on a 2° CONUS grid, 30 forecast hours | 6 h |
+
+At startup the API backfills the last 30 h from each feed, so the map isn't
+empty after a restart. Each feed's status, last success and newest observation
+show in the Layers popover and at `/api/health`. In production
+(`NODE_ENV=production`), live mode refuses to start without `DATABASE_URL`.
+
+Satellites aren't GOES-fast: VIIRS and MODIS pass a few times a day and FIRMS
+publishes their detections 1-3 h later, so each source carries its own
+evidence window (30 h for polar orbiters, 2 h for GOES, about an hour for
+dispatch and crowd reports).
 
 `DATA_MODE=hybrid` keeps the demo running alongside real feeds, which is useful
 for development when an upstream is flaky.
@@ -307,7 +325,7 @@ firepulse/
 │   │   │   ├── spread/       next-day spread: ONNX model, static tiles, weather, summary
 │   │   │   ├── pipeline.ts   ingest → fuse → publish orchestration
 │   │   │   └── server.ts     HTTP API + WS + webhooks + metrics
-│   │   └── test/             76 tests: model, parsers, DBSCAN, merge, replay, spread
+│   │   └── test/             101 tests: model, parsers, DBSCAN, merge, replay, spread, NWS, wind
 │   └── web/                  Next.js App Router client
 │       ├── src/components/   AppHeader, MapCanvas, Sidebar, DetailPanel, Timeline
 │       ├── src/lib/          places.ts (4 basemaps), layers.ts, store.ts, select.ts
@@ -365,6 +383,7 @@ than its `lastHotspotSeq` inside its viewport. See
 | GET | `/api/v1/incidents/:id` | signals, neighbours, series |
 | GET | `/api/v1/incidents/:id/spread` | next-day spread forecast (202 while computing) |
 | GET | `/api/v1/hotspots?bbox=&from=&to=` | thermal window |
+| GET | `/api/v1/alerts?bbox=` | active NWS fire, evacuation and smoke alerts |
 | GET | `/api/v1/timeline?hours=24` | histogram + official draws |
 | GET | `/api/v1/stats` | rates, latency, fusion config |
 | GET | `/api/v1/merges` | lead-time ledger |
@@ -380,7 +399,7 @@ than its `lastHotspotSeq` inside its viewport. See
 
 ```bash
 pnpm typecheck                  # protocol + API + web
-pnpm test                       # 76 tests
+pnpm test                       # 101 tests
 node scripts/shot.mjs           # headless screenshot + console/WebGL diagnostics
 node scripts/build-basemap.mjs  # PMTiles writer, validated by reading it back
 ```
@@ -393,6 +412,8 @@ re-opening the archive through `pmtiles` and decoding a sample MVT tile.
 ## Limitations
 
 - Demo mode is **synthetic**; the UI labels it. It is not live fire data.
+- Live satellite detections come from polar orbiters and are 1-3 h old when
+  they arrive. GOES (minutes) is not ingested yet.
 - Single-bearing observations are range-bearing projections. Multi-camera ray
   intersection (weighted least squares) is the next accuracy improvement.
 - GOES geolocation (~2 km) sets a floor on cluster radius; below it, one fire can
