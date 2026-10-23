@@ -54,7 +54,7 @@ export class Pipeline {
   ) {}
 
   async bootstrap(): Promise<void> {
-    const { store, engine, hotspots, metrics, config, simulation, log } = this.deps;
+    const { store, engine, hotspots, metrics, config, simulation, adapters, officialAdapter, log } = this.deps;
     const now = Date.now();
 
     if (simulation) {
@@ -62,10 +62,7 @@ export class Pipeline {
       const from = now - Math.max(24, config.ingest.hotspotRetentionHours) * 3_600_000;
       const historical = simulation.generate(from, now);
       log.info({ signals: historical.length }, "seeding historical signals");
-      const normalized = historical.map((s) => this.normalize(s, now));
-      await store.insertSignals(normalized);
-      hotspots.add(normalized, now);
-      metrics.record(normalized, now);
+      await store.insertSignals(historical.map((s) => this.normalize(s, now)));
 
       const official = simulation.officialDue(from, now);
       if (official.length > 0) {
@@ -78,8 +75,26 @@ export class Pipeline {
       }
     }
 
-    await engine.hydrate();
-    await this.runFusion(now);
+    // The store holds whatever earlier runs collected (Postgres survives a
+    // restart), so the hotspot log and replay start from it, not empty.
+    const restored = await store.recentSignals(now - this.retentionMs, now + 5_000);
+    hotspots.add(restored, now);
+    metrics.record(restored, now);
+    if (!simulation) log.info({ signals: restored.length }, "restored signals from store");
+
+    await engine.hydrate(now);
+
+    // Fill in whatever happened while the process was down.
+    const backfill = adapters.filter((a) => a.enabled && a.backfill);
+    if (backfill.length > 0 || (!simulation && officialAdapter?.enabled)) {
+      await Promise.all([
+        ...backfill.map((a) => this.pollSource(a, now - this.retentionMs)),
+        ...(!simulation && officialAdapter?.enabled ? [this.pollOfficial(officialAdapter)] : []),
+      ]);
+      log.info({ adapters: backfill.map((a) => a.id) }, "backfilled live feeds");
+    }
+
+    await this.runFusion(Date.now());
     log.info(
       { hotspots: hotspots.count, incidents: engine.allIncidents().length },
       "pipeline bootstrap complete",
@@ -159,12 +174,12 @@ export class Pipeline {
     const now = Date.now();
     const normalized = signals.map((s) => this.normalize(s, now));
     const inserted = await this.deps.store.insertSignals(normalized);
-    if (inserted > 0) {
-      this.deps.hotspots.add(normalized, now);
-      this.deps.metrics.record(normalized, now);
+    if (inserted.length > 0) {
+      this.deps.hotspots.add(inserted, now);
+      this.deps.metrics.record(inserted, now);
       this.requestFusion();
     }
-    return inserted;
+    return inserted.length;
   }
 
   normalize(signal: RawSignal, now: number): RawSignal {
@@ -219,22 +234,23 @@ export class Pipeline {
     }
   }
 
-  private async pollSource(adapter: SourceAdapter): Promise<void> {
+  private async pollSource(adapter: SourceAdapter, since?: number): Promise<void> {
     const now = Date.now();
     try {
       const cutoff = now - this.retentionMs;
-      const signals = (await adapter.poll({ now, since: now - adapter.intervalMs - 2_000 })).filter(
+      const signals = (await adapter.poll({ now, since: since ?? now - adapter.intervalMs - 2_000 })).filter(
         (s) => Date.parse(s.observedAt) >= cutoff,
       );
       if (signals.length === 0) return;
       const normalized = signals.map((s) => this.normalize(s, now));
       const inserted = await this.deps.store.insertSignals(normalized);
-      if (inserted < normalized.length) {
-        this.deps.metrics.recordDrop(normalized.length - inserted);
+      if (inserted.length < normalized.length) {
+        this.deps.metrics.recordDrop(normalized.length - inserted.length);
       }
-      if (inserted > 0) {
-        this.deps.hotspots.add(normalized, now);
-        this.deps.metrics.record(normalized, now);
+      if (inserted.length > 0) {
+        // Only new rows: FIRMS returns the whole trailing day on every poll.
+        this.deps.hotspots.add(inserted, now);
+        this.deps.metrics.record(inserted, now);
         // Hotspots are pushed immediately on the next fusion tick; if the
         // fusion loop is idle, publish an empty delta so heat still streams.
         this.deps.hub.publish([], []);
@@ -251,7 +267,11 @@ export class Pipeline {
       const batch = await adapter.poll({ now, since: this.startedAt - 24 * 3_600_000 });
       if (batch.features.length === 0) return;
       const delta = await this.deps.engine.ingestOfficial(batch.features, batch.perimeters, now);
-      if (delta.upserts.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
+      if (batch.complete) {
+        const present = new Set(batch.features.map((f) => f.id));
+        delta.removes.push(...(await this.deps.engine.retireOfficial(present, batch.complete.idPrefix)));
+      }
+      if (delta.upserts.length > 0 || delta.removes.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
       // Estimates fold into new perimeters on the next pass.
       this.requestFusion();
       this.deps.log.info(

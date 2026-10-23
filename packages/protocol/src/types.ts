@@ -163,6 +163,9 @@ export type FireCause =
   | "lightning"
   | "structure"
   | "vegetation"
+  | "human"
+  /** A planned, permitted burn (WFIGS incident type RX). */
+  | "prescribed"
   | "unknown";
 
 export interface IncidentProperties {

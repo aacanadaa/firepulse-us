@@ -445,6 +445,32 @@ export class FusionEngine {
     return { upserts, removes: [] };
   }
 
+  /**
+   * Drops official incidents that a complete feed snapshot no longer lists
+   * (declared out or withdrawn). A snapshot that suddenly lost more than
+   * half of them is treated as an upstream glitch and ignored.
+   */
+  async retireOfficial(present: Set<string>, idPrefix: string): Promise<string[]> {
+    const current: string[] = [];
+    for (const [id, track] of this.tracks) {
+      if (track.feature.properties.kind === "official" && id.startsWith(idPrefix)) current.push(id);
+    }
+    const gone = current.filter((id) => !present.has(id));
+    if (gone.length === 0) return [];
+    if (gone.length > current.length / 2 && current.length >= 10) {
+      this.log.warn(
+        { missing: gone.length, current: current.length, idPrefix },
+        "official snapshot is missing most incidents; not retiring any",
+      );
+      return [];
+    }
+    await this.store.deactivateIncidents(gone, "expired");
+    if (this.cache) await this.cache.removeIncidents(gone);
+    for (const id of gone) this.dropTrack(id);
+    this.log.info({ retired: gone.length, idPrefix }, "official incidents no longer listed");
+    return gone;
+  }
+
   private async mergeEstimatesIntoOfficial(
     official: IncidentFeature[],
     now: number,

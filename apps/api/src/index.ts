@@ -25,6 +25,12 @@ const log = pino({
 });
 
 async function chooseStore(): Promise<Store> {
+  // Live production data (and, later, user accounts) must survive a
+  // restart; never fall back to memory there.
+  const requirePostgres = config.dataMode === "live" && process.env.NODE_ENV === "production";
+  if (requirePostgres && !config.databaseUrl) {
+    throw new Error("DATA_MODE=live in production requires DATABASE_URL");
+  }
   if (config.databaseUrl) {
     const pg = new PostgresStore(config.databaseUrl);
     try {
@@ -32,6 +38,7 @@ async function chooseStore(): Promise<Store> {
       log.info("using Postgres/PostGIS store");
       return pg;
     } catch (err) {
+      if (requirePostgres) throw err;
       log.warn(
         { err: err instanceof Error ? err.message : err },
         "DATABASE_URL set but unreachable — falling back to in-memory store",

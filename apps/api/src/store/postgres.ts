@@ -73,8 +73,8 @@ export class PostgresStore implements Store {
     await this.pool.end();
   }
 
-  async insertSignals(signals: RawSignal[]): Promise<number> {
-    if (signals.length === 0) return 0;
+  async insertSignals(signals: RawSignal[]): Promise<RawSignal[]> {
+    if (signals.length === 0) return [];
     const rows = signals.map((s) => ({
       source: s.source,
       kind: s.kind,
@@ -104,10 +104,12 @@ export class PostgresStore implements Store {
            lon double precision, lat double precision, observed_at timestamptz,
            frp real, provider_confidence real, bearing smallint, distance_m integer,
            label text, h3 text, dedupe_key text, payload jsonb)
-       on conflict (source, dedupe_key) do nothing`,
+       on conflict (source, dedupe_key) do nothing
+       returning source, dedupe_key`,
       [JSON.stringify(rows)],
     );
-    return res.rowCount ?? 0;
+    const fresh = new Set(res.rows.map((r: { source: string; dedupe_key: string }) => `${r.source}:${r.dedupe_key}`));
+    return signals.filter((s, i) => fresh.delete(`${s.source}:${rows[i]!.dedupe_key}`));
   }
 
   async recentSignals(sinceMs: number, untilMs?: number): Promise<RawSignal[]> {

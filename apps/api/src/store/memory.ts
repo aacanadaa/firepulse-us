@@ -29,14 +29,14 @@ export class MemoryStore implements Store {
   }
   async close(): Promise<void> {}
 
-  async insertSignals(signals: RawSignal[]): Promise<number> {
-    let inserted = 0;
+  async insertSignals(signals: RawSignal[]): Promise<RawSignal[]> {
+    const inserted: RawSignal[] = [];
     for (const s of signals) {
       const key = `${s.source}:${(s.meta?.dedupeKey as string | undefined) ?? s.id}`;
       if (this.dedupe.has(key)) continue;
       this.signals.set(s.id, s);
       this.dedupe.set(key, s.id);
-      inserted++;
+      inserted.push(s);
     }
     return inserted;
   }

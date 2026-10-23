@@ -303,4 +303,32 @@ describe("fusion engine", () => {
       expect(engine.incident(id)).toBeNull();
     });
   });
+
+  describe("official incidents that leave the feed", () => {
+    const official = (i: number) =>
+      officialFeature({
+        id: `wfigs-${i}`,
+        name: `Fire ${i}`,
+        lon: -120 + i * 0.5,
+        lat: 40,
+        firstDetectedAt: iso(3_600_000),
+        officialSince: iso(3_600_000),
+      });
+
+    it("retires official incidents missing from a complete snapshot", async () => {
+      const engine = new FusionEngine(new MemoryStore(), cfg, log);
+      await engine.ingestOfficial([official(1), official(2), official(3)], []);
+      const gone = await engine.retireOfficial(new Set(["wfigs-1", "wfigs-2"]), "wfigs-");
+      expect(gone).toEqual(["wfigs-3"]);
+      expect(engine.incident("wfigs-3")).toBeNull();
+      expect(engine.incident("wfigs-1")).not.toBeNull();
+    });
+
+    it("ignores a snapshot that lost most incidents at once", async () => {
+      const engine = new FusionEngine(new MemoryStore(), cfg, log);
+      await engine.ingestOfficial(Array.from({ length: 12 }, (_, i) => official(i)), []);
+      expect(await engine.retireOfficial(new Set(["wfigs-0"]), "wfigs-")).toEqual([]);
+      expect(engine.counts().official).toBe(12);
+    });
+  });
 });

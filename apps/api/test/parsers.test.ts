@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   bufferedHull,
@@ -8,7 +10,14 @@ import {
   pointInRing,
   ringAreaSqKm,
 } from "@firepulse/protocol";
-import { parseFirmsCsv, parseFirmsTime, parseNwsAlerts, parseWfigsGeoJSON } from "../src/sources/live.js";
+import {
+  firmsDayRange,
+  mergeOfficialBatches,
+  parseFirmsCsv,
+  parseFirmsTime,
+  parseNwsAlerts,
+  parseWfigsGeoJSON,
+} from "../src/sources/live.js";
 import { cellOf } from "../src/h3.js";
 
 const now = Date.parse("2026-10-20T12:00:00Z");
@@ -111,6 +120,19 @@ US,35.0,-111.7,305.0,1,1,2026-10-19,0235,Terra,MODIS,80,6.1,290,50.0,N`;
     expect(parseFirmsTime("bad", "0230")).toMatch(/T/);
   });
 
+  it("records which FIRMS product a detection came from", () => {
+    const signals = parseFirmsCsv(csv, { source: "viirs", product: "VIIRS_NOAA21_NRT" });
+    expect(signals[0]!.meta?.product).toBe("VIIRS_NOAA21_NRT");
+  });
+
+  it("asks FIRMS for enough whole days to cover the poll window", () => {
+    const now = Date.parse("2026-10-20T12:00:00Z");
+    expect(firmsDayRange(now, now - 10 * 60_000)).toBe(1);
+    expect(firmsDayRange(now, now - 10 * 60_000, 2)).toBe(2);
+    expect(firmsDayRange(now, now - 30 * 3_600_000)).toBe(2);
+    expect(firmsDayRange(now, 0)).toBe(5);
+  });
+
   it("returns nothing for an empty product", () => {
     expect(parseFirmsCsv("", { source: "modis" })).toEqual([]);
     expect(parseFirmsCsv("latitude,longitude\n", { source: "modis" })).toEqual([]);
@@ -182,6 +204,65 @@ describe("WFIGS parser", () => {
     expect(batch.features).toHaveLength(1);
     expect(batch.features[0]!.geometry.coordinates[0]!.length).toBeGreaterThan(20);
     expect(batch.perimeters[0]!.acres).toBe(4000);
+  });
+
+  describe("recorded WFIGS responses", () => {
+    const fixture = (name: string) =>
+      JSON.parse(readFileSync(join(__dirname, "fixtures", "wfigs", name), "utf8")) as unknown;
+    const perimeters = parseWfigsGeoJSON(fixture("perimeters.geojson"));
+    const incidents = parseWfigsGeoJSON(fixture("incidents.geojson"));
+
+    it("reads the attr_/poly_ prefixed fields of the perimeter layer", () => {
+      expect(perimeters.features).toHaveLength(1);
+      const p = perimeters.features[0]!.properties;
+      expect(p.id).toBe("wfigs-2026-COLSX-001549");
+      expect(p.name).toBe("Post");
+      expect(p.state).toBe("CO");
+      expect(p.containment).toBe(100);
+      expect(p.status).toBe("contained");
+      expect(p.cause).toBe("lightning");
+      expect(p.areaAcres).toBeGreaterThanOrEqual(4335);
+      expect(Date.parse(p.firstDetectedAt)).toBeLessThanOrEqual(Date.parse(p.officialSince!));
+    });
+
+    it("keeps the largest part of a multi-part perimeter", () => {
+      const ring = perimeters.features[0]!.geometry.coordinates[0]!;
+      expect(ring.length).toBeGreaterThan(40);
+      expect(perimeters.perimeters[0]!.geom.coordinates[0]).toBe(ring);
+    });
+
+    it("tags prescribed burns and buffers point-only incidents", () => {
+      expect(incidents.features).toHaveLength(3);
+      const rx = incidents.features.find((f) => f.properties.name === "2026 Alut Ave Project RX")!;
+      expect(rx.properties.cause).toBe("prescribed");
+      const national = incidents.features.find((f) => f.properties.name === "National")!;
+      expect(national.properties.cause).toBe("human");
+      expect(national.geometry.coordinates[0]!.length).toBe(37);
+    });
+
+    it("lets a mapped perimeter win over the same incident's point", () => {
+      const merged = mergeOfficialBatches(perimeters, incidents);
+      expect(merged.features.map((f) => f.properties.name).sort()).toEqual(["2026 Alut Ave Project RX", "National", "Post"]);
+      const post = merged.features.find((f) => f.properties.name === "Post")!;
+      expect(post.geometry.coordinates[0]!.length).toBeGreaterThan(40);
+      expect(merged.perimeters.filter((p) => p.incidentId === post.id)).toHaveLength(1);
+    });
+  });
+
+  it("skips incidents that have been declared out and non-fire records", () => {
+    const point = (props: Record<string, unknown>) => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [-121.5, 39.5] },
+      properties: { IncidentName: "Old Fire", UniqueFireIdentifier: "x1", ...props },
+    });
+    const batch = parseWfigsGeoJSON({
+      features: [
+        point({ FireOutDateTime: 1792627621931 }),
+        point({ IncidentTypeCategory: "FA" }),
+        point({ IncidentTypeCategory: "WF" }),
+      ],
+    });
+    expect(batch.features).toHaveLength(1);
   });
 
   it("ignores malformed collections", () => {

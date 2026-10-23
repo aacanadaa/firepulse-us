@@ -2,6 +2,7 @@ import {
   circleRing,
   km2ToAcres,
   ringAreaSqKm,
+  type FireCause,
   type IncidentFeature,
   type RawSignal,
 } from "@firepulse/protocol";
@@ -28,9 +29,11 @@ const FIRMS_COLUMNS = [
  * Works for VIIRS (SNPP/NOAA-20/NOAA-21, 375 m) and MODIS (1 km) products.
  * Confidence is numeric (0-100) for MODIS and l/n/h for VIIRS.
  */
+export type FirmsProduct = "VIIRS_SNPP_NRT" | "VIIRS_NOAA20_NRT" | "VIIRS_NOAA21_NRT" | "MODIS_NRT";
+
 export function parseFirmsCsv(
   csv: string,
-  opts: { source: "viirs" | "modis"; receivedAt?: string } = { source: "viirs" },
+  opts: { source: "viirs" | "modis"; product?: FirmsProduct; receivedAt?: string } = { source: "viirs" },
 ): RawSignal[] {
   const lines = csv.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
@@ -86,7 +89,7 @@ export function parseFirmsCsv(
         dedupeKey: id,
         satellite,
         brightness: Number.isFinite(brightness) ? brightness : undefined,
-        product: opts.source === "viirs" ? "VIIRS_SNPP_NRT" : "MODIS_NRT",
+        product: opts.product ?? (opts.source === "viirs" ? "VIIRS_SNPP_NRT" : "MODIS_NRT"),
       },
     });
   }
@@ -119,23 +122,38 @@ export function parseFirmsTime(date: string, hhmm: string): string {
 /* -------------------------------------------------------------------- */
 
 function pick(props: Record<string, unknown>, keys: string[]): unknown {
-  for (const k of keys) {
+  // The perimeter layer prefixes incident attributes with `attr_` and
+  // polygon attributes with `poly_`; the incident-location layer does not.
+  const variants = keys.flatMap((k) => [k, `attr_${k}`, `poly_${k}`]);
+  for (const k of variants) {
     const v = props[k];
     if (v !== undefined && v !== null && v !== "") return v;
   }
   // case-insensitive fallback
   const lower = new Map(Object.keys(props).map((k) => [k.toLowerCase(), props[k]]));
-  for (const k of keys) {
+  for (const k of variants) {
     const v = lower.get(k.toLowerCase());
     if (v !== undefined && v !== null && v !== "") return v;
   }
   return undefined;
 }
 
+/** Wildfire, prescribed fire and complex; other record types are not fires. */
+const WFIGS_FIRE_TYPES = new Set(["WF", "RX", "CX"]);
+
+const KNOWN_CAUSES = new Set<FireCause>(["vehicle", "powerline", "lightning", "structure", "vegetation", "human"]);
+
+function fireCause(raw: unknown): FireCause {
+  const cause = String(raw ?? "").trim().toLowerCase();
+  if (cause === "natural") return "lightning";
+  return KNOWN_CAUSES.has(cause as FireCause) ? (cause as FireCause) : "unknown";
+}
+
 /**
  * WFIGS current incidents/perimeters GeoJSON → official incidents.
  * Accepts Point incidents (buffered by reported acreage for display) and
- * Polygon/MultiPolygon perimeters (used as-is for containment).
+ * Polygon/MultiPolygon perimeters (used as-is for containment). Incidents
+ * already declared out are skipped; prescribed burns are kept and tagged.
  */
 export function parseWfigsGeoJSON(json: unknown): OfficialBatch {
   const features: IncidentFeature[] = [];
@@ -148,8 +166,12 @@ export function parseWfigsGeoJSON(json: unknown): OfficialBatch {
       geometry?: { type: string; coordinates: unknown };
       properties?: Record<string, unknown>;
     };
-    if (!feature.geometry || !feature.properties) continue;
+    if (!feature?.geometry || !feature.properties) continue;
     const props = feature.properties;
+    if (pick(props, ["FireOutDateTime"]) !== undefined) continue;
+    const type = String(pick(props, ["IncidentTypeCategory"]) ?? "WF").toUpperCase();
+    if (!WFIGS_FIRE_TYPES.has(type)) continue;
+
     const name = String(
       pick(props, ["IncidentName", "polygonName", "name", "IRWINName", "FireName"]) ?? "Unnamed Incident",
     );
@@ -158,13 +180,21 @@ export function parseWfigsGeoJSON(json: unknown): OfficialBatch {
     );
     if (!name || name === "Unnamed Incident") continue;
 
-    const acres = Number(pick(props, ["CalculatedAcres", "GISAcres", "DailyAcres", "acres"]) ?? 0) || 0;
+    const acres =
+      Number(pick(props, ["IncidentSize", "CalculatedAcres", "GISAcres", "DailyAcres", "acres"]) ?? 0) || 0;
     const containment = Number(pick(props, ["PercentContained", "Containment"]) ?? NaN);
     const state = String(pick(props, ["POOState", "State"]) ?? "").replace(/^US-/, "");
     const county = String(pick(props, ["POOCounty", "County"]) ?? "");
-    const cause = String(pick(props, ["FireCause", "Cause"]) ?? "");
-    const since = toIso(pick(props, ["polygonDateTime", "DateCurrent", "FireDiscoveryDateTime", "ModifiedOnDateTime_dt"]));
+    const cause = type === "RX" ? "prescribed" : fireCause(pick(props, ["FireCause", "Cause"]));
+    const polygonAt = pick(props, ["PolygonDateTime", "polygonDateTime", "DateCurrent"]);
+    // Officially known from the moment the incident record was created.
+    const since = toIso(
+      pick(props, ["CreatedOnDateTime_dt", "FireDiscoveryDateTime"]) ?? polygonAt ?? pick(props, ["ModifiedOnDateTime_dt"]),
+    );
+    const discoveredAt = toIso(pick(props, ["FireDiscoveryDateTime"]) ?? since);
+    const updatedAt = toIso(pick(props, ["ModifiedOnDateTime_dt"]) ?? polygonAt ?? since);
     const id = `wfigs-${extId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+    const common = { id, name, extId, containment, state, county, cause, since, discoveredAt, updatedAt };
 
     if (feature.geometry.type !== "Polygon" && feature.geometry.type !== "MultiPolygon") {
       const coords = feature.geometry.coordinates as [number, number] | undefined;
@@ -174,20 +204,7 @@ export function parseWfigsGeoJSON(json: unknown): OfficialBatch {
       const radius = Math.max(0.3, Math.min(6, Math.sqrt(Math.max(acres, 40) / 247 / Math.PI)));
       const ring = circleRing({ lon, lat }, radius, 36);
       features.push(
-        officialFeature({
-          id,
-          name,
-          extId,
-          ring,
-          lon,
-          lat,
-          acres: Math.max(acres, km2ToAcres(ringAreaSqKm(ring))),
-          containment,
-          state,
-          county,
-          cause,
-          since,
-        }),
+        officialFeature({ ...common, ring, lon, lat, acres: Math.max(acres, km2ToAcres(ringAreaSqKm(ring))) }),
       );
       perimeters.push({
         incidentId: id,
@@ -199,40 +216,46 @@ export function parseWfigsGeoJSON(json: unknown): OfficialBatch {
       continue;
     }
 
-    const rings =
+    const outers = (
       feature.geometry.type === "Polygon"
-        ? [(feature.geometry.coordinates as number[][][])[0]!]
-        : ((feature.geometry.coordinates as number[][][][]).map((p) => p[0]!) as number[][][]);
-    const outer = rings[0];
-    if (!outer || outer.length < 4) continue;
-    const ring = outer as unknown as [number, number][];
+        ? [(feature.geometry.coordinates as number[][][])[0]]
+        : (feature.geometry.coordinates as number[][][][]).map((p) => p[0])
+    ).filter((r): r is number[][] => Array.isArray(r) && r.length >= 4) as unknown as [number, number][][];
+    if (outers.length === 0) continue;
+    // An incident carries one outline; keep the largest part of a
+    // multi-part perimeter and count every part toward the area.
+    let ring = outers[0]!;
+    let largest = 0;
+    let totalSqKm = 0;
+    for (const part of outers) {
+      const area = ringAreaSqKm(part);
+      totalSqKm += area;
+      if (area > largest) {
+        largest = area;
+        ring = part;
+      }
+    }
     const centroid = ringCentroid(ring);
-    const polygonAcres = km2ToAcres(ringAreaSqKm(ring));
-    features.push(
-      officialFeature({
-        id,
-        name,
-        extId,
-        ring,
-        lon: centroid[0],
-        lat: centroid[1],
-        acres: Math.max(acres, polygonAcres),
-        containment,
-        state,
-        county,
-        cause,
-        since,
-      }),
-    );
+    const totalAcres = Math.max(acres, km2ToAcres(totalSqKm));
+    features.push(officialFeature({ ...common, ring, lon: centroid[0], lat: centroid[1], acres: totalAcres }));
     perimeters.push({
       incidentId: id,
       geom: { type: "Polygon", coordinates: [ring] },
-      acres: Math.max(acres, polygonAcres),
+      acres: totalAcres,
       agency: "NIFC",
-      publishedAt: since,
+      publishedAt: polygonAt !== undefined ? toIso(polygonAt) : since,
     });
   }
   return { features, perimeters };
+}
+
+/** One record per incident: a mapped perimeter wins over its point location. */
+export function mergeOfficialBatches(primary: OfficialBatch, fallback: OfficialBatch): OfficialBatch {
+  const ids = new Set(primary.features.map((f) => f.id));
+  return {
+    features: [...primary.features, ...fallback.features.filter((f) => !ids.has(f.id))],
+    perimeters: [...primary.perimeters, ...fallback.perimeters.filter((p) => !ids.has(p.incidentId))],
+  };
 }
 
 function officialFeature(input: {
@@ -246,8 +269,10 @@ function officialFeature(input: {
   containment: number;
   state: string;
   county: string;
-  cause: string;
+  cause: FireCause;
   since: string;
+  discoveredAt: string;
+  updatedAt: string;
 }): IncidentFeature {
   return {
     type: "Feature",
@@ -268,9 +293,9 @@ function officialFeature(input: {
         evidenceCount: 1,
         rationale: "Official government ground truth",
       },
-      sources: [{ source: "wfigs", count: 1, lastSeen: input.since }],
-      firstDetectedAt: input.since,
-      updatedAt: new Date().toISOString(),
+      sources: [{ source: "wfigs", count: 1, lastSeen: input.updatedAt }],
+      firstDetectedAt: input.discoveredAt,
+      updatedAt: input.updatedAt,
       areaAcres: Math.round(input.acres),
       areaSqKm: Math.round(ringAreaSqKm(input.ring) * 100) / 100,
       frp: 0,
@@ -281,7 +306,7 @@ function officialFeature(input: {
       evidence: [],
       officialSince: input.since,
       containment: Number.isFinite(input.containment) ? input.containment : undefined,
-      cause: (input.cause || "unknown").toLowerCase() as IncidentFeature["properties"]["cause"],
+      cause: input.cause,
       county: input.county || undefined,
       state: input.state || undefined,
       cells: [],
@@ -372,55 +397,145 @@ function firstRing(geometry: { type: string; coordinates: unknown }): [number, n
 /* ==================================================================== */
 
 const FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv";
-const WFIGS_URL =
-  process.env.WFIGS_URL ??
-  "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson";
+const WFIGS_SERVICES = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+const WFIGS_PERIMETERS_URL =
+  process.env.WFIGS_PERIMETERS_URL ?? `${WFIGS_SERVICES}/WFIGS_Interagency_Perimeters_Current/FeatureServer/0`;
+const WFIGS_INCIDENTS_URL =
+  process.env.WFIGS_INCIDENTS_URL ?? `${WFIGS_SERVICES}/WFIGS_Incident_Locations_Current/FeatureServer/0`;
+/** Only what the parser reads; `outFields=*` is 13x larger. */
+const WFIGS_FIELDS = [
+  "IncidentName",
+  "UniqueFireIdentifier",
+  "IrwinID",
+  "IncidentSize",
+  "PercentContained",
+  "POOState",
+  "POOCounty",
+  "FireCause",
+  "IncidentTypeCategory",
+  "FireDiscoveryDateTime",
+  "CreatedOnDateTime_dt",
+  "ModifiedOnDateTime_dt",
+  "FireOutDateTime",
+];
+const WFIGS_PERIMETER_FIELDS = [
+  ...WFIGS_FIELDS.map((f) => `attr_${f}`),
+  "poly_IncidentName",
+  "poly_GISAcres",
+  "poly_PolygonDateTime",
+  "poly_DateCurrent",
+];
+const ARCGIS_PAGE = 2000;
 const NWS_URL =
   process.env.NWS_URL ?? "https://api.weather.gov/alerts/active?event=Red%20Flag%20Warning&status=actual";
 
-async function getJson(url: string, headers: Record<string, string> = {}): Promise<unknown> {
+async function getJson(url: string, headers: Record<string, string> = {}, timeoutMs = 15_000): Promise<unknown> {
   const res = await fetch(url, {
     headers: { accept: "application/geo+json, application/json", ...headers },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res.json();
+}
+
+/** FIRMS counts whole UTC days back from today; it accepts 1 to 5. */
+export function firmsDayRange(now: number, since: number, minDays = 1): number {
+  const days = Math.ceil((now - since) / 86_400_000);
+  return Math.max(minDays, Math.min(5, Number.isFinite(days) ? days : 1));
 }
 
 export function createFirmsAdapters(): SourceAdapter[] {
   const key = process.env.FIRMS_MAP_KEY;
   if (!key) return [];
   const [west, south, east, north] = (process.env.FIRMS_BBOX ?? "-126,23,-66,50").split(",");
-  const days = process.env.FIRMS_DAYS ?? "1";
+  // Two days so a poll just after 00:00 UTC still covers the previous
+  // evening's passes; dedupe absorbs the overlap.
+  const minDays = Number(process.env.FIRMS_DAYS ?? 2) || 2;
   const bbox = `${west},${south},${east},${north}`;
 
-  const make = (product: "VIIRS_SNPP_NRT" | "MODIS_NRT", source: "viirs" | "modis"): SourceAdapter => ({
-    id: `firms-${source}`,
+  const make = (product: FirmsProduct, source: "viirs" | "modis"): SourceAdapter => ({
+    id: `firms-${product.toLowerCase().replace(/_nrt$/, "")}`,
     label: `NASA FIRMS ${product}`,
     sources: [source],
     tier: 2,
-    intervalMs: 5 * 60_000,
+    // Each product is a few hundred kB for CONUS; four of them every ten
+    // minutes is far inside the FIRMS map-key allowance.
+    intervalMs: 10 * 60_000,
     enabled: true,
-    async poll() {
-      const url = `${FIRMS_BASE}/${key}/${product}/${bbox}/${days}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) throw new Error(`FIRMS ${res.status}`);
+    backfill: true,
+    async poll({ now, since }) {
+      const url = `${FIRMS_BASE}/${key}/${product}/${bbox}/${firmsDayRange(now, since, minDays)}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+      if (!res.ok) throw new Error(`FIRMS ${product} ${res.status}`);
       const csv = await res.text();
-      return parseFirmsCsv(csv, { source, receivedAt: new Date().toISOString() });
+      // A bad key or exceeded quota comes back as 200 with a plain-text message.
+      if (!/^\s*(country_id,)?latitude,/i.test(csv) && csv.trim().length > 0) {
+        throw new Error(`FIRMS ${product}: ${csv.trim().slice(0, 120)}`);
+      }
+      return parseFirmsCsv(csv, { source, product, receivedAt: new Date(now).toISOString() });
     },
   });
 
-  return [make("VIIRS_SNPP_NRT", "viirs"), make("MODIS_NRT", "modis")];
+  return [
+    make("VIIRS_SNPP_NRT", "viirs"),
+    make("VIIRS_NOAA20_NRT", "viirs"),
+    make("VIIRS_NOAA21_NRT", "viirs"),
+    make("MODIS_NRT", "modis"),
+  ];
+}
+
+/** Every feature of an ArcGIS layer as one GeoJSON collection, page by page. */
+export async function fetchArcgisLayer(
+  layerUrl: string,
+  params: Record<string, string>,
+  maxPages = 20,
+): Promise<{ type: "FeatureCollection"; features: unknown[] }> {
+  const features: unknown[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    const query = new URLSearchParams({
+      where: "1=1",
+      outSR: "4326",
+      f: "geojson",
+      orderByFields: "OBJECTID",
+      resultOffset: String(features.length),
+      resultRecordCount: String(ARCGIS_PAGE),
+      ...params,
+    });
+    const json = (await getJson(`${layerUrl}/query?${query}`, {}, 45_000)) as {
+      features?: unknown[];
+      error?: { message?: string };
+      exceededTransferLimit?: boolean;
+      properties?: { exceededTransferLimit?: boolean };
+    };
+    // ArcGIS reports query errors as HTTP 200 with an error body.
+    if (json.error) throw new Error(`ArcGIS ${layerUrl}: ${json.error.message ?? "query failed"}`);
+    const batch = Array.isArray(json.features) ? json.features : [];
+    features.push(...batch);
+    const more = json.properties?.exceededTransferLimit ?? json.exceededTransferLimit ?? false;
+    if (!more || batch.length === 0) break;
+  }
+  return { type: "FeatureCollection", features };
 }
 
 export function createWfigsAdapter(): OfficialAdapter {
   return {
     id: "wfigs",
-    label: "NIFC WFIGS current perimeters",
-    intervalMs: 2 * 60_000,
+    label: "NIFC WFIGS current incidents and perimeters",
+    intervalMs: 5 * 60_000,
     enabled: true,
     async poll(): Promise<OfficialBatch> {
-      return parseWfigsGeoJSON(await getJson(WFIGS_URL));
+      const [perimeters, incidents] = await Promise.all([
+        fetchArcgisLayer(WFIGS_PERIMETERS_URL, {
+          outFields: WFIGS_PERIMETER_FIELDS.join(","),
+          // ~1 m coordinates and ~20 m simplification: 19 MB → 1.4 MB.
+          geometryPrecision: "5",
+          maxAllowableOffset: "0.0002",
+        }),
+        fetchArcgisLayer(WFIGS_INCIDENTS_URL, { outFields: WFIGS_FIELDS.join(",") }),
+      ]);
+      const batch = mergeOfficialBatches(parseWfigsGeoJSON(perimeters), parseWfigsGeoJSON(incidents));
+      // Both layers list every current incident, so anything missing is out.
+      return { ...batch, complete: { idPrefix: "wfigs-" } };
     },
   };
 }
