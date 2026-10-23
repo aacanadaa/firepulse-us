@@ -402,6 +402,33 @@ HTTP Range support (Next static serving or any CDN/S3).
 
 ---
 
+## 7b. Household alerts
+
+Sources: [`apps/api/src/notify/`](../apps/api/src/notify/),
+[`apps/api/src/accounts/`](../apps/api/src/accounts/).
+
+```
+fusion upserts ─┐
+official ingest ┼─▶ AlertEngine ── rules.ts ──▶ alert_delivery (deduped) ──▶ PushOutbox ──▶ Web Push
+NWS alert set  ─┤      ▲ watched places + settings     (place, kind, subject, revision)   retries, 404/410 cleanup,
+spread forecast ┘      │ (reloaded every 5 min and on change)                                hourly cap, quiet hours
+```
+
+- **What reaches a household.** Official fires that aren't planned burns, and
+  estimates that are *persistent* (heat in passes 6 h or more apart) or
+  *corroborated* (two independent kinds of evidence). Single-pass satellite
+  heat never alerts.
+- **Distance** is measured from the place to the fire's mapped edge, not its
+  centroid.
+- **Dedupe key** `(place, kind, subject, revision)`: an estimate and the
+  official fire it becomes share a subject, so the second message is "now
+  official" rather than "new fire". Fire weather uses the local date as its
+  revision, giving one alert a day.
+- **Baseline.** When a place is added or widened, fires and warnings already
+  around it are stored with status `baseline`: known, never sent.
+- **Spread** forecasts are scheduled only for confirmed fires within 50 km of a
+  watched place, rerun on new detections or every 6 h.
+
 ## 8. HTTP API
 
 | Method | Path | Purpose |
