@@ -21,6 +21,13 @@ export function formatAgeShort(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** A duration in minutes, e.g. "45 min" or "30 h". */
+export function formatMinutes(min: number): string {
+  if (!Number.isFinite(min)) return "—";
+  if (min < 120) return `${Math.round(min)} min`;
+  return `${Math.round(min / 60)} h`;
+}
+
 export function formatClock(ms: number): string {
   return new Date(ms).toLocaleTimeString("en-US", {
     hour12: false,

@@ -55,12 +55,15 @@ interface ProfileSeed {
   modality: Modality;
   weight: number;
   halfLifeMin: number;
+  windowMin: number;
   detector: boolean;
   color: string;
 }
 
 const SEEDS: Record<SourceId, ProfileSeed> = {
   // ---- Tier 4: official ground truth (short-circuits to 100) -------------
+  // Official incidents arrive through their own adapter, never through the
+  // evidence window, so their windowMin is 0.
   nifc: {
     label: "NIFC Perimeter",
     short: "NIFC",
@@ -68,6 +71,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "official",
     weight: 1,
     halfLifeMin: 10080,
+    windowMin: 0,
     detector: true,
     color: "#ff3b30",
   },
@@ -78,6 +82,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "official",
     weight: 1,
     halfLifeMin: 10080,
+    windowMin: 0,
     detector: true,
     color: "#ff453a",
   },
@@ -88,6 +93,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "official",
     weight: 1,
     halfLifeMin: 10080,
+    windowMin: 0,
     detector: true,
     color: "#ff6b00",
   },
@@ -99,7 +105,8 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     tier: 2,
     modality: "satellite-thermal",
     weight: 0.60,
-    halfLifeMin: 45,
+    halfLifeMin: 90,
+    windowMin: 120,
     detector: true,
     color: "#ffd166",
   },
@@ -109,7 +116,8 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     tier: 2,
     modality: "satellite-thermal",
     weight: 0.58,
-    halfLifeMin: 45,
+    halfLifeMin: 90,
+    windowMin: 120,
     detector: true,
     color: "#ffcf5c",
   },
@@ -119,7 +127,8 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     tier: 2,
     modality: "satellite-thermal",
     weight: 0.56,
-    halfLifeMin: 180,
+    halfLifeMin: 720,
+    windowMin: 1800,
     detector: true,
     color: "#ffb84d",
   },
@@ -129,7 +138,8 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     tier: 2,
     modality: "satellite-thermal",
     weight: 0.46,
-    halfLifeMin: 240,
+    halfLifeMin: 720,
+    windowMin: 1800,
     detector: true,
     color: "#ff9f1c",
   },
@@ -142,6 +152,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "dispatch",
     weight: 0.55,
     halfLifeMin: 210,
+    windowMin: 90,
     detector: true,
     color: "#ff5ea8",
   },
@@ -152,6 +163,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "dispatch",
     weight: 0.38,
     halfLifeMin: 120,
+    windowMin: 60,
     detector: true,
     color: "#ff77c8",
   },
@@ -162,6 +174,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "camera",
     weight: 0.50,
     halfLifeMin: 90,
+    windowMin: 60,
     detector: true,
     color: "#8b5cf6",
   },
@@ -174,6 +187,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     // ~20%, and a geotagged photo + bearing (0.9) lands at ~25%.
     weight: 0.26,
     halfLifeMin: 240,
+    windowMin: 90,
     detector: true,
     color: "#38bdf8",
   },
@@ -186,6 +200,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "air-quality",
     weight: 0.22,
     halfLifeMin: 60,
+    windowMin: 60,
     detector: false,
     color: "#a3e635",
   },
@@ -196,6 +211,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "air-quality",
     weight: 0.20,
     halfLifeMin: 90,
+    windowMin: 120,
     detector: false,
     color: "#84cc16",
   },
@@ -206,6 +222,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "weather",
     weight: 0.12,
     halfLifeMin: 120,
+    windowMin: 120,
     detector: false,
     color: "#22d3ee",
   },
@@ -216,6 +233,7 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     modality: "weather",
     weight: 0.06,
     halfLifeMin: 720,
+    windowMin: 1440,
     detector: false,
     color: "#0ea5e9",
   },
@@ -224,6 +242,20 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
 export const SOURCE_PROFILES: Record<SourceId, SourceProfile> = Object.fromEntries(
   Object.entries(SEEDS).map(([id, seed]) => [id, { id: id as SourceId, ...seed }]),
 ) as Record<SourceId, SourceProfile>;
+
+/** The engine loads this much history per pass, then trims per source. */
+export const EVIDENCE_WINDOW_MAX_MIN = Math.max(
+  ...Object.values(SOURCE_PROFILES).map((p) => p.windowMin),
+);
+
+/** Whether a signal is still inside its own source's evidence window. */
+export function inEvidenceWindow(signal: Pick<RawSignal, "source" | "observedAt">, now: number): boolean {
+  const profile = SOURCE_PROFILES[signal.source];
+  if (!profile) return false;
+  const observed = Date.parse(signal.observedAt);
+  if (!Number.isFinite(observed)) return false;
+  return now - observed <= profile.windowMin * 60_000;
+}
 
 export const TIER_LABELS: Record<Tier, string> = {
   1: "Tier 1 · Dispatch & crowdsource",

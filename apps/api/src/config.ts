@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import type { PublicConfig } from "@firepulse/protocol";
+import { EVIDENCE_WINDOW_MAX_MIN, type PublicConfig } from "@firepulse/protocol";
 
 /** apps/api/assets/spread, from both src/ (tsx) and dist/ (node). */
 const SPREAD_ASSETS = fileURLToPath(new URL("../assets/spread/", import.meta.url));
@@ -39,8 +39,6 @@ export const config = {
   fusion: {
     /** DBSCAN neighbourhood radius, metres. */
     radiusKm: num("FUSION_RADIUS_KM", 2),
-    /** Trailing window of evidence considered by one fusion pass. */
-    windowMin: num("FUSION_WINDOW_MIN", 30),
     /** Minimum points in a neighbourhood; 1 = every detector seeds. */
     minPoints: num("FUSION_MIN_POINTS", 1),
     /** How often the fusion loop runs. */
@@ -49,7 +47,10 @@ export const config = {
     minHotspots: 1,
     /** Buffer applied to the convex hull, metres. */
     hullBufferM: num("FUSION_HULL_BUFFER_M", 220),
-    /** Estimate expires after this much silence. */
+    /**
+     * Grace period after a cluster's last evidence leaves its source window
+     * (see `windowMin` in the source profiles) before the estimate expires.
+     */
     ttlMin: num("FUSION_TTL_MIN", 45),
     /** Stable-ID matching distance for a fresh cluster. */
     matchKm: num("FUSION_MATCH_KM", 3),
@@ -107,7 +108,7 @@ export const config = {
   h3Resolution: 8,
   publicConfig: {
     fusionRadiusKm: num("FUSION_RADIUS_KM", 2),
-    fusionWindowMin: num("FUSION_WINDOW_MIN", 30),
+    fusionWindowMin: EVIDENCE_WINDOW_MAX_MIN,
     hotspotRetentionHours: num("HOTSPOT_RETENTION_HOURS", 24),
     officialReveal: true,
     h3Resolution: 8,

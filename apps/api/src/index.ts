@@ -140,7 +140,7 @@ async function main(): Promise<void> {
       ws: `ws://127.0.0.1:${config.port}/ws`,
       mode: config.dataMode,
       store: store.kind,
-      fusion: `${config.fusion.radiusKm}km / ${config.fusion.windowMin}min / ${config.fusion.intervalMs}ms`,
+      fusion: `${config.fusion.radiusKm}km / ${config.fusion.intervalMs}ms`,
     },
     "FirePulse API ready",
   );

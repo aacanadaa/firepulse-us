@@ -67,6 +67,12 @@ export interface SourceProfile {
   weight: number;
   /** Evidence half-life in minutes (how fast this signal loses weight). */
   halfLifeMin: number;
+  /**
+   * How long after observation a signal still counts as evidence for a
+   * current estimate. Polar orbiters revisit about twice a day and arrive
+   * hours late, so their window is far longer than a dispatch call's.
+   */
+  windowMin: number;
   /** Whether a signal of this source can independently seed an incident. */
   detector: boolean;
   color: string;
@@ -336,6 +342,7 @@ export type ServerMessage =
 
 export interface PublicConfig {
   fusionRadiusKm: number;
+  /** Longest per-source evidence window (polar-orbiting thermal). */
   fusionWindowMin: number;
   hotspotRetentionHours: number;
   officialReveal: boolean;

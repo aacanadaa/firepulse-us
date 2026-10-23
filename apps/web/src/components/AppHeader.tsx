@@ -5,6 +5,7 @@ import type { FeedStatus } from "@/lib/store";
 import { MAP_THEMES, MAP_TYPES, type MapType } from "@/lib/places";
 import type { LayerFlags } from "./MapCanvas";
 import { thermalSwatches } from "@/lib/layers";
+import { formatMinutes } from "@/lib/format";
 import { Icon } from "./ui";
 
 interface Props {
@@ -275,7 +276,7 @@ export default function AppHeader({
                     <span>Fusion radius</span>
                     <span className="v">{config?.fusionRadiusKm ?? 2} km</span>
                     <span>Evidence window</span>
-                    <span className="v">{config?.fusionWindowMin ?? 30} min</span>
+                    <span className="v">up to {formatMinutes(config?.fusionWindowMin ?? 1800)}</span>
                     <span>H3 resolution</span>
                     <span className="v">r{config?.h3Resolution ?? 8}</span>
                     <span>Ingest rate</span>

@@ -3,7 +3,7 @@
 import type { IncidentFeature, PublicConfig } from "@firepulse/protocol";
 import type { KindFilter, FeedTab } from "@/lib/select";
 import type { FeedStatus } from "@/lib/store";
-import { formatNumber } from "@/lib/format";
+import { formatMinutes, formatNumber } from "@/lib/format";
 import IncidentCard from "./IncidentCard";
 import { Icon } from "./ui";
 
@@ -173,7 +173,7 @@ export default function Sidebar({
 
       <footer className="sb-foot">
         <span>
-          DBSCAN {config?.fusionRadiusKm ?? 2} km / {config?.fusionWindowMin ?? 30} min
+          DBSCAN {config?.fusionRadiusKm ?? 2} km / ≤{formatMinutes(config?.fusionWindowMin ?? 1800)}
         </span>
         <span style={{ color: "var(--line-strong)" }}>·</span>
         <span>H3 r{config?.h3Resolution ?? 8}</span>

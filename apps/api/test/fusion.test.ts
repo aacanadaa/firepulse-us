@@ -15,7 +15,6 @@ const log = pino({ level: "silent" });
 const cfg = {
   fusion: {
     radiusKm: 2,
-    windowMin: 30,
     minPoints: 1,
     intervalMs: 4000,
     minHotspots: 1,
@@ -233,5 +232,75 @@ describe("fusion engine", () => {
     expect(engine.view(bbox, { at: iso(25 * 60_000) })).toHaveLength(0);
     expect(engine.view(bbox, { at: iso(15 * 60_000) }).length).toBe(1);
     expect(engine.view(bbox, { at: iso(0) }).length).toBe(1);
+  });
+
+  describe("per-source evidence windows", () => {
+    const HOUR = 3_600_000;
+
+    it("builds an estimate from VIIRS detections that arrived hours after the pass", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "v1", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(3 * HOUR) }),
+        signal({ id: "v2", source: "viirs", lon: -120.503, lat: 38.201, observedAt: iso(3 * HOUR) }),
+      ]);
+      const result = await engine.run(NOW);
+      expect(result.upserts).toHaveLength(1);
+      expect(result.upserts[0]!.properties.hotspotCount).toBe(2);
+      expect(result.upserts[0]!.properties.firstDetectedAt).toBe(iso(3 * HOUR));
+    });
+
+    it("keeps one ID across a twelve-hour gap between satellite passes", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "day", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(14 * HOUR) }),
+      ]);
+      const first = await engine.run(NOW - 12 * HOUR);
+      expect(first.upserts).toHaveLength(1);
+
+      await store.insertSignals([
+        signal({ id: "night", source: "viirs", lon: -120.502, lat: 38.2, observedAt: iso(2 * HOUR) }),
+      ]);
+      const second = await engine.run(NOW);
+      expect(second.removes).toHaveLength(0);
+      expect(engine.incident(first.upserts[0]!.id)?.properties.hotspotCount).toBe(2);
+    });
+
+    it("ignores VIIRS older than its window and CAD older than an hour and a half", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "old-viirs", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(31 * HOUR) }),
+        signal({ id: "old-cad", source: "cad", lon: -119.31, lat: 34.48, observedAt: iso(2 * HOUR) }),
+      ]);
+      const result = await engine.run(NOW);
+      expect(result.upserts).toHaveLength(0);
+    });
+
+    it("expires an estimate once its evidence has aged out and the grace period passes", async () => {
+      const store = new MemoryStore();
+      const engine = new FusionEngine(store, cfg, log);
+      await store.insertSignals([
+        signal({ id: "v1", source: "viirs", lon: -120.5, lat: 38.2, observedAt: iso(0) }),
+      ]);
+      const first = await engine.run(NOW);
+      const id = first.upserts[0]!.id;
+
+      // Still inside the 30 h window: kept, with lower freshness.
+      const later = await engine.run(NOW + 29.9 * HOUR);
+      expect(later.removes).toHaveLength(0);
+      expect(engine.incident(id)!.properties.confidenceBreakdown.freshness).toBeLessThan(
+        first.upserts[0]!.properties.confidenceBreakdown.freshness,
+      );
+
+      // Out of the window, but last seen less than the grace period ago.
+      const grace = await engine.run(NOW + 30.2 * HOUR);
+      expect(grace.removes).toHaveLength(0);
+
+      const gone = await engine.run(NOW + 29.9 * HOUR + (cfg.fusion.ttlMin + 1) * 60_000);
+      expect(gone.removes).toContain(id);
+      expect(engine.incident(id)).toBeNull();
+    });
   });
 });

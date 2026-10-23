@@ -2,7 +2,9 @@ import {
   bufferedHull,
   centroid,
   dbscan,
+  EVIDENCE_WINDOW_MAX_MIN,
   fuseConfidence,
+  inEvidenceWindow,
   haversineKm,
   km2ToAcres,
   pointInRing,
@@ -57,7 +59,9 @@ export interface FusionResult extends FusionDelta {
  * Early-Estimate Fusion Engine.
  *
  * One pass:
- *   1. Load the trailing evidence window (default 30 min).
+ *   1. Load the trailing evidence window. Each source has its own (see
+ *      `windowMin` in the source profiles): an hour for dispatch, two for
+ *      GOES, 30 h for polar-orbiting VIIRS/MODIS.
  *   2. Spatial DBSCAN over *detection* signals in metric space (2 km).
  *   3. Attach tier-3 context (PM2.5, RAWS) to the nearest cluster.
  *   4. Match each cluster to an existing estimate (H3 overlap → signal
@@ -85,7 +89,7 @@ export class FusionEngine {
     private readonly cache?: RedisCache,
   ) {}
 
-  async hydrate(): Promise<void> {
+  async hydrate(now = Date.now()): Promise<void> {
     const active = await this.store.activeIncidents();
     for (const f of active) {
       const p = f.properties;
@@ -93,7 +97,9 @@ export class FusionEngine {
         feature: f,
         signature: signatureOf(f),
         firstSeen: Date.parse(p.firstDetectedAt),
-        lastSignalAt: Date.parse(p.updatedAt),
+        // "Last seen by fusion", not last evidence: satellite evidence is
+        // often hours old, and the next pass must still match this track.
+        lastSignalAt: now,
         peakConfidence: p.confidence,
         memberIds: new Set(),
         history: [
@@ -145,10 +151,12 @@ export class FusionEngine {
 
   async run(now = Date.now()): Promise<FusionResult> {
     const started = performance.now();
-    const windowMs = this.cfg.fusion.windowMin * 60_000;
+    const windowMs = EVIDENCE_WINDOW_MAX_MIN * 60_000;
     // Never let future-dated observations (clock skew, bad sensor time)
     // influence the current estimate.
-    const signals = await this.store.recentSignals(now - windowMs, now + 5_000);
+    const signals = (await this.store.recentSignals(now - windowMs, now + 5_000)).filter((s) =>
+      inEvidenceWindow(s, now),
+    );
     const officialFeatures = [...this.tracks.values()]
       .map((t) => t.feature)
       .filter((f) => f.properties.kind === "official");
@@ -195,7 +203,7 @@ export class FusionEngine {
 
       qualified++;
       const evidence = [...members, ...attached];
-      const track = this.matchTrack(c, members, now);
+      const track = this.matchTrack(c, members);
       const evidenceSignals = evidence.map((s) => ({
         source: s.source,
         observedAt: s.observedAt,
@@ -355,7 +363,7 @@ export class FusionEngine {
       incidentsUpdated: updated,
       incidentsMerged: result.merged,
       radiusM: Math.round(this.cfg.fusion.radiusKm * 1000),
-      windowMinutes: this.cfg.fusion.windowMin,
+      windowMinutes: EVIDENCE_WINDOW_MAX_MIN,
     });
     if (created > 0) {
       this.log.info({ created, clusters: qualified, ms: result.durationMs }, "fusion pass created estimates");
@@ -596,11 +604,7 @@ export class FusionEngine {
   /* Internals                                                           */
   /* ------------------------------------------------------------------ */
 
-  private matchTrack(
-    c: { lon: number; lat: number },
-    members: RawSignal[],
-    now: number,
-  ): Track | undefined {
+  private matchTrack(c: { lon: number; lat: number }, members: RawSignal[]): Track | undefined {
     const candidates = new Map<string, number>();
     for (const cell of cellsOf(members)) {
       for (const id of this.cellIndex.get(cell) ?? []) {
@@ -613,8 +617,9 @@ export class FusionEngine {
     for (const [id, overlap] of candidates) {
       const track = this.tracks.get(id);
       if (!track) continue;
+      // No staleness check: expiry runs at the end of every pass, so any
+      // track still here is alive, even if the last pass was hours ago.
       if (track.mergedAt) continue;
-      if (now - track.lastSignalAt > this.cfg.fusion.windowMin * 2 * 60_000) continue;
       const distance = haversineKm(c, { lon: track.feature.properties.lon, lat: track.feature.properties.lat });
       if (distance > this.cfg.fusion.matchKm) continue;
       const memberHits = members.filter((m) => track.memberIds.has(m.id)).length;
