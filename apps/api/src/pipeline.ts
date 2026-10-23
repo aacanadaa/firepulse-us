@@ -9,6 +9,7 @@ import type { HazardLayer } from "./realtime/hazards.js";
 import type { SourceHealthBoard } from "./realtime/health.js";
 import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
 import { hazardContextSignals } from "./sources/nws.js";
+import type { LiveWind } from "./sources/wind.js";
 import type { FireSimulation } from "./simulation/generator.js";
 import { cellOf } from "./h3.js";
 import type { Logger } from "pino";
@@ -56,14 +57,16 @@ export class Pipeline {
       hazardAdapter: HazardAdapter | null;
       hazards: HazardLayer;
       health: SourceHealthBoard;
+      wind: LiveWind | null;
       simulation: FireSimulation | null;
       log: Logger;
     },
   ) {
-    const { adapters, officialAdapter, hazardAdapter, health } = deps;
+    const { adapters, officialAdapter, hazardAdapter, wind, health } = deps;
     for (const a of adapters) if (a.enabled) health.register(a.id, a.label, "signals", a.intervalMs);
     if (officialAdapter?.enabled) health.register(officialAdapter.id, officialAdapter.label, "official", officialAdapter.intervalMs);
     if (hazardAdapter?.enabled) health.register(hazardAdapter.id, hazardAdapter.label, "hazards", hazardAdapter.intervalMs);
+    if (wind) health.register(wind.id, wind.label, "wind", wind.intervalMs);
   }
 
   async bootstrap(): Promise<void> {
@@ -151,7 +154,16 @@ export class Pipeline {
     this.purgeTimer = setInterval(() => void this.purge(), 10 * 60_000);
     this.purgeTimer.unref?.();
 
-    if (this.deps.simulation) {
+    if (this.deps.wind) {
+      const wind = this.deps.wind;
+      this.tasks.push(this.schedule(wind.id, wind.intervalMs, () => this.refreshWind(wind)));
+      // Step through the cached forecast hours between refreshes.
+      this.windTimer = setInterval(() => {
+        const field = wind.current();
+        if (field) this.deps.hub.setWind(field);
+      }, 10 * 60_000);
+      this.windTimer.unref?.();
+    } else if (this.deps.simulation) {
       const sim = this.deps.simulation;
       const tick = () => {
         const field = sim.windField(Date.now());
@@ -316,6 +328,19 @@ export class Pipeline {
     } catch (err) {
       this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "official poll failed");
+    }
+  }
+
+  private async refreshWind(wind: LiveWind): Promise<void> {
+    const now = Date.now();
+    try {
+      const hours = await wind.refresh();
+      const field = wind.current();
+      this.deps.health.success(wind.id, { now: Date.now(), count: hours, observedAt: [field?.validAt] });
+      if (field) this.deps.hub.setWind(field);
+    } catch (err) {
+      this.deps.health.failure(wind.id, now, err);
+      this.deps.log.warn({ err }, "wind refresh failed");
     }
   }
 

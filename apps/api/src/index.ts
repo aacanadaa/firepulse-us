@@ -14,6 +14,7 @@ import { FireSimulation } from "./simulation/generator.js";
 import { createSimulatedAdapters, createSimulatedOfficialAdapter } from "./sources/simulated.js";
 import { createFirmsAdapters, createWfigsAdapter } from "./sources/live.js";
 import { createNwsAdapter } from "./sources/nws.js";
+import { LiveWind } from "./sources/wind.js";
 import { HazardLayer } from "./realtime/hazards.js";
 import { SourceHealthBoard } from "./realtime/health.js";
 import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
   let adapters: SourceAdapter[] = [];
   let officialAdapter: OfficialAdapter | null = null;
   let hazardAdapter: HazardAdapter | null = null;
+  let wind: LiveWind | null = null;
 
   if (config.dataMode === "simulation" || !config.dataMode) {
     if (!simulation) throw new Error("simulation mode requires a generator");
@@ -78,6 +80,7 @@ async function main(): Promise<void> {
     adapters = createFirmsAdapters();
     officialAdapter = createWfigsAdapter();
     hazardAdapter = createNwsAdapter(config.userAgent);
+    wind = new LiveWind({ userAgent: config.userAgent, timeoutMs: config.spread.httpTimeoutMs });
     if (adapters.length === 0) {
       log.warn("live mode with no FIRMS_MAP_KEY — no satellite detections; only WFIGS/NWS will ingest");
     }
@@ -117,6 +120,7 @@ async function main(): Promise<void> {
     hazardAdapter,
     hazards,
     health,
+    wind,
     simulation,
     log,
   });
