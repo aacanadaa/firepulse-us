@@ -6,6 +6,7 @@ import { MAP_THEMES, MAP_TYPES, type MapType } from "@/lib/places";
 import type { LayerFlags } from "./MapCanvas";
 import { thermalSwatches } from "@/lib/layers";
 import { formatMinutes } from "@/lib/format";
+import { SourceHealthList } from "./SourceHealth";
 import { Icon } from "./ui";
 
 interface Props {
@@ -24,6 +25,7 @@ interface Props {
   medianLead: number | null;
   mergeCount: number;
   config: PublicConfig | null;
+  now: number;
 }
 
 const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
@@ -68,6 +70,7 @@ export default function AppHeader({
   medianLead,
   mergeCount,
   config,
+  now,
 }: Props) {
   const theme = MAP_THEMES[mapType];
   const type = MAP_TYPES.find((t) => t.id === mapType);
@@ -267,6 +270,15 @@ export default function AppHeader({
                     {type?.note}
                   </div>
                 </div>
+
+                {stats?.sources && stats.sources.length > 0 ? (
+                  <div className="pop-section">
+                    <div className="kicker" style={{ marginBottom: 8 }}>
+                      Data sources
+                    </div>
+                    <SourceHealthList sources={stats.sources} now={now} />
+                  </div>
+                ) : null}
 
                 <div className="pop-section">
                   <div className="kicker" style={{ marginBottom: 8 }}>

@@ -296,6 +296,7 @@ export default function FirePulseApp() {
         medianLead={merges.medianLeadTimeMinutes}
         mergeCount={merges.count}
         config={store.config}
+        now={now}
       />
 
       <div className={`main ${sidebarOpen ? "" : "no-sidebar"} ${showDetail ? "inspect" : ""}`}>
@@ -313,6 +314,7 @@ export default function FirePulseApp() {
             latencyMs={feed.latencyMs}
             ingestRate={store.stats?.ingestRate ?? 0}
             config={store.config}
+            sources={store.stats?.sources}
             onTab={setTab}
             onKind={setKind}
             onConfidence={setMinConfidence}

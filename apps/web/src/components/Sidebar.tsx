@@ -1,10 +1,11 @@
 "use client";
 
-import type { IncidentFeature, PublicConfig } from "@firepulse/protocol";
+import type { IncidentFeature, PublicConfig, SourceHealth } from "@firepulse/protocol";
 import type { KindFilter, FeedTab } from "@/lib/select";
 import type { FeedStatus } from "@/lib/store";
 import { formatMinutes, formatNumber } from "@/lib/format";
 import IncidentCard from "./IncidentCard";
+import { feedProblem } from "./SourceHealth";
 import { Icon } from "./ui";
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
   latencyMs: number;
   ingestRate: number;
   config: PublicConfig | null;
+  sources?: SourceHealth[];
   onTab: (tab: FeedTab) => void;
   onKind: (kind: KindFilter) => void;
   onConfidence: (min: number) => void;
@@ -59,6 +61,7 @@ export default function Sidebar({
   latencyMs,
   ingestRate,
   config,
+  sources,
   onTab,
   onKind,
   onConfidence,
@@ -179,7 +182,15 @@ export default function Sidebar({
         <span>H3 r{config?.h3Resolution ?? 8}</span>
         <span style={{ color: "var(--line-strong)" }}>·</span>
         <span>{ingestRate.toFixed(1)}/s</span>
-        {config?.simulated ? <span className="sim">Simulated</span> : <span className="sim">Live</span>}
+        {config?.simulated ? (
+          <span className="sim">Simulated</span>
+        ) : feedProblem(sources) ? (
+          <span className="sim" style={{ color: "var(--warn)", borderColor: "var(--warn)" }}>
+            Live · {feedProblem(sources)}
+          </span>
+        ) : (
+          <span className="sim">Live</span>
+        )}
       </footer>
     </aside>
   );
