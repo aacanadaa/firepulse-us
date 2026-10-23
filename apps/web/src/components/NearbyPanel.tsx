@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { GeocodeResult, HazardAlertProperties, NearbyFire, NearbySummary } from "@firepulse/protocol";
-import { formatAcres, formatKm, hazardTier, plainFireStatus } from "@/lib/format";
+import { formatAcres, formatAgeShort, formatKm, hazardTier, plainFireStatus } from "@/lib/format";
 import { RADIUS_CHOICES, usePlaceSearch, type WatchedPlace } from "@/lib/myplaces";
 import { Icon } from "./ui";
 
@@ -18,6 +18,8 @@ interface Props {
   onSelectFire: (fire: NearbyFire) => void;
   /** Prompt to sign in or turn on alerts, shown under the search box. */
   cta?: React.ReactNode;
+  /** The smoke report form, shown under the places. */
+  report?: React.ReactNode;
 }
 
 function until(iso: string | undefined): string {
@@ -59,6 +61,30 @@ function AlertBanner({ alert, place }: { alert: HazardAlertProperties; place: Wa
         Official alert at weather.gov
       </a>
     </div>
+  );
+}
+
+/** EPA's plain advice for each AQI range, for PM2.5 (smoke). */
+function airAdvice(aqi: number): string | null {
+  if (aqi > 200) return "Everyone should avoid time outdoors and keep windows closed.";
+  if (aqi > 150) return "Everyone should cut back on time outdoors; sensitive groups should stay in.";
+  if (aqi > 100) return "Children, older adults and people with heart or lung conditions should limit time outdoors.";
+  return null;
+}
+
+function AirLine({ air, now }: { air: NonNullable<NearbySummary["airQuality"]>; now: number }) {
+  const advice = airAdvice(air.aqi);
+  const tone = air.aqi > 150 ? "bad" : air.aqi > 100 ? "poor" : "";
+  return (
+    <p className={`np-air ${tone}`}>
+      <span>
+        Air: <strong>{air.category}</strong> · PM2.5 AQI {air.aqi}
+      </span>
+      <span className="mono">
+        {air.siteName}, {formatKm(air.distanceKm)} · {formatAgeShort(now - Date.parse(air.observedAt))} ago
+      </span>
+      {advice ? <span>{advice}</span> : null}
+    </p>
   );
 }
 
@@ -147,6 +173,8 @@ function PlaceCard({
           ? ` · ${fires.length - wildfires.length} planned ${fires.length - wildfires.length === 1 ? "burn" : "burns"}`
           : ""}
       </p>
+
+      {summary?.airQuality ? <AirLine air={summary.airQuality} now={now} /> : null}
 
       {summary && summary.unconfirmedHeat > 0 ? (
         <p className="np-note">
@@ -262,6 +290,8 @@ export default function NearbyPanel(props: Props) {
           />
         ))
       )}
+
+      {props.report}
 
       <p className="np-disclaimer">
         FirePulse is not an official warning service. Evacuation orders come from local authorities: follow them, and call

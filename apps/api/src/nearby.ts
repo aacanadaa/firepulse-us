@@ -12,6 +12,7 @@ import {
 } from "@firepulse/protocol";
 import { outerRings } from "./fusion/engine.js";
 import type { HazardLayer } from "./realtime/hazards.js";
+import type { AirQualityLayer } from "./sources/airnow.js";
 
 export const NEARBY_MAX_RADIUS_KM = 200;
 const MAX_FIRES = 50;
@@ -31,6 +32,7 @@ export function nearbySummary(
   now = Date.now(),
   /** The latest forecast for a fire, seen from this point, if one has run. */
   outlook?: (incidentId: string, point: LngLat) => SpreadOutlook | undefined,
+  air?: AirQualityLayer,
 ): NearbySummary {
   const fires: NearbyFire[] = [];
   let unconfirmedHeat = 0;
@@ -80,5 +82,6 @@ export function nearbySummary(
     fires: fires.slice(0, MAX_FIRES),
     unconfirmedHeat,
     alerts: hazards.covering(point, now).map((a) => a.properties),
+    airQuality: air?.nearest(point, now) ?? undefined,
   };
 }

@@ -13,6 +13,7 @@ import AppHeader from "./AppHeader";
 import Sidebar, { type SidebarMode } from "./Sidebar";
 import NearbyPanel from "./NearbyPanel";
 import AccountPanel from "./AccountPanel";
+import ReportSmoke from "./ReportSmoke";
 import DetailPanel from "./DetailPanel";
 import Timeline from "./Timeline";
 import { Icon } from "./ui";
@@ -491,6 +492,7 @@ export default function FirePulseApp() {
                 onRadius={placesApi.setRadius}
                 onFocusPlace={(p: WatchedPlace) => focusOn(p)}
                 onSelectFire={handleNearbyFire}
+                report={<ReportSmoke signedIn={signedIn} places={placesApi.places} onSignIn={() => setAccountOpen(true)} />}
                 cta={
                   account.unavailable || placesApi.places.length === 0 ? null : !signedIn ? (
                     <div className="np-cta">

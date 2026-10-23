@@ -28,6 +28,8 @@ import { HeatMask } from "./heatMask.js";
 const DETECTION_KINDS = new Set<RawSignal["kind"]>(["thermal", "dispatch", "camera", "crowd"]);
 const CONTEXT_KINDS = new Set<RawSignal["kind"]>(["airquality", "weather"]);
 const GROWTH_REF_MS = 10 * 60_000;
+/** Smoke at an air monitor this close counts as context for a cluster. */
+const AIR_MONITOR_REACH_KM = 25;
 /** Farthest an official fire can be from a cluster and still cover it (name match). */
 const OFFICIAL_REACH_KM = 12;
 const MAX_HISTORY = 288;
@@ -771,7 +773,8 @@ function attachContext(
     // Area alerts (red flag zones) apply to everything inside them.
     const polygon = s.meta?.polygon;
     if (Array.isArray(polygon) && polygon.length >= 4) return pointInRing(c, polygon as Ring);
-    return haversineKm(c, s) <= radiusKm;
+    // Air monitors are sparse; smoke reaches them from further away.
+    return haversineKm(c, s) <= (s.kind === "airquality" ? AIR_MONITOR_REACH_KM : radiusKm);
   });
 }
 

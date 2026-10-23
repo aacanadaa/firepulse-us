@@ -232,4 +232,35 @@ describe("account routes", () => {
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: a } })).json().user.username).toBe("lee");
     expect((await app.inject({ url: "/api/v1/auth/me", headers: { cookie: b } })).json().user).toBeNull();
   });
+
+  it("takes smoke reports from signed-in people as low-weight crowd evidence, five an hour", async () => {
+    const accounts = new MemoryAccountStore();
+    const alerts = new AlertEngine({ accounts, log, incidents: () => [], hazards: () => [] });
+    const got: { confidence?: number; bearing?: number; label?: string; meta?: unknown }[] = [];
+    const app = Fastify();
+    await registerAccountRoutes(app, {
+      config: cfg,
+      accounts,
+      alerts,
+      sender: null,
+      ingest: async (signals) => {
+        for (const s of signals) got.push({ confidence: s.providerConfidence, bearing: s.bearing, label: s.label, meta: s.meta });
+        return signals.length;
+      },
+      log,
+    });
+    const report = (cookie: string | undefined, payload: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/api/v1/me/reports", headers: { ...json, ...(cookie ? { cookie } : {}) }, payload });
+    expect((await report(undefined, { lat: 39.7, lon: -121.6 })).statusCode).toBe(401);
+    const cookie = cookieOf(
+      await app.inject({ method: "POST", url: "/api/v1/auth/signup", headers: json, payload: { username: "ana", password: "a sensible passphrase" } }),
+    );
+    expect((await report(cookie, { lat: 51.5, lon: -0.1 })).statusCode).toBe(400);
+    expect((await report(cookie, { lat: 39.7, lon: -121.6, description: "Column of smoke over the ridge" })).statusCode).toBe(202);
+    expect((await report(cookie, { lat: 39.7, lon: -121.6, bearing: 90, distanceM: 3000 })).statusCode).toBe(202);
+    expect(got[0]).toMatchObject({ confidence: 0.45, label: "Column of smoke over the ridge", meta: { reporter: "user" } });
+    expect(got[1]).toMatchObject({ confidence: 0.6, bearing: 90 });
+    for (let i = 0; i < 3; i++) await report(cookie, { lat: 39.7, lon: -121.6 });
+    expect((await report(cookie, { lat: 39.7, lon: -121.6 })).statusCode).toBe(429);
+  });
 });

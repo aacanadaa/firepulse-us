@@ -8,6 +8,7 @@ import {
   type AlertItem,
   type AlertKind,
   type AuthState,
+  type RawSignal,
 } from "@firepulse/protocol";
 import type { AppConfig } from "../config.js";
 import type { AlertEngine } from "../notify/engine.js";
@@ -117,10 +118,13 @@ export async function registerAccountRoutes(
     accounts: AccountStore;
     alerts: AlertEngine;
     sender: PushSender | null;
+    /** Adds signals to the fusion pipeline (smoke reports). */
+    ingest?: (signals: RawSignal[]) => Promise<number>;
     log: Logger;
   },
 ): Promise<void> {
   const { config, accounts, alerts, sender, log } = deps;
+  const reportLimit = new LoginThrottle(5, 60 * 60_000);
   const byIp = new LoginThrottle(20, 15 * 60_000);
   const byName = new LoginThrottle(8, 15 * 60_000);
   const signups = new LoginThrottle(10, 60 * 60_000);
@@ -449,6 +453,54 @@ export async function registerAccountRoutes(
 
   app.get("/api/v1/me/alerts", { preHandler: requireUser }, async (req) =>
     (await accounts.recentAlerts(req.user!.id, 50)).map(publicAlert),
+  );
+
+  /* ---------------------------- smoke reports ------------------------ */
+
+  /**
+   * A person reporting smoke or fire. It counts as low-weight crowd evidence:
+   * it can raise a fire's confidence or corroborate satellite heat, but on its
+   * own it never makes a confirmed fire or an alert.
+   */
+  app.post<{ Body: { lat?: unknown; lon?: unknown; description?: unknown; bearing?: unknown; distanceM?: unknown } }>(
+    "/api/v1/me/reports",
+    { preHandler: requireUser },
+    async (req, reply) => {
+      if (!deps.ingest) return reply.code(503).send({ error: "reports aren't accepted right now" });
+      const lat = Number(req.body?.lat);
+      const lon = Number(req.body?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < 17 || lat > 72 || lon < -180 || lon > -60) {
+        return reply.code(400).send({ error: "Reports need a location in the US." });
+      }
+      if (reportLimit.blocked(req.user!.id)) return reply.code(429).send({ error: "You've sent several reports this hour. Thank you; try again later." });
+      reportLimit.fail(req.user!.id);
+      const bearing = Number(req.body?.bearing);
+      const distanceM = Number(req.body?.distanceM);
+      const aimed = Number.isFinite(bearing) && Number.isFinite(distanceM) && distanceM > 0 && distanceM <= 50_000;
+      const now = new Date().toISOString();
+      const id = `report-${randomBytes(8).toString("hex")}`;
+      const signal: RawSignal = {
+        id,
+        source: "crowd",
+        kind: "crowd",
+        tier: 1,
+        lat,
+        lon,
+        observedAt: now,
+        receivedAt: now,
+        // A direction and distance place the smoke; a bare report is weaker.
+        providerConfidence: aimed ? 0.6 : 0.45,
+        bearing: aimed ? ((Math.round(bearing) % 360) + 360) % 360 : undefined,
+        distanceM: aimed ? Math.round(distanceM) : undefined,
+        label: typeof req.body?.description === "string" && req.body.description.trim()
+          ? req.body.description.trim().slice(0, 160)
+          : "Smoke reported by a FirePulse user",
+        meta: { dedupeKey: id, reporter: "user" },
+      };
+      await deps.ingest([signal]);
+      log.info({ user: req.user!.id, report: id, aimed }, "smoke report received");
+      return reply.code(202).send({ ok: true });
+    },
   );
 
   /* ------------------------------- push ------------------------------ */

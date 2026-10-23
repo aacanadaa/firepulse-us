@@ -16,6 +16,7 @@ import { createSimulatedAdapters, createSimulatedOfficialAdapter } from "./sourc
 import { createFirmsAdapters, createWfigsAdapter } from "./sources/live.js";
 import { createNwsAdapter } from "./sources/nws.js";
 import { LiveWind } from "./sources/wind.js";
+import { AirQualityLayer, createAirNowAdapter } from "./sources/airnow.js";
 import { HazardLayer } from "./realtime/hazards.js";
 import { SourceHealthBoard } from "./realtime/health.js";
 import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
   let officialAdapter: OfficialAdapter | null = null;
   let hazardAdapter: HazardAdapter | null = null;
   let wind: LiveWind | null = null;
+  const airQuality = new AirQualityLayer();
 
   if (config.dataMode === "simulation" || !config.dataMode) {
     if (!simulation) throw new Error("simulation mode requires a generator");
@@ -87,6 +89,8 @@ async function main(): Promise<void> {
     officialAdapter = createWfigsAdapter();
     hazardAdapter = createNwsAdapter(config.userAgent);
     wind = new LiveWind({ userAgent: config.userAgent, timeoutMs: config.spread.httpTimeoutMs });
+    if (process.env.AIRNOW_API_KEY) adapters.push(createAirNowAdapter(process.env.AIRNOW_API_KEY, airQuality));
+    else log.warn("no AIRNOW_API_KEY: no air quality readings");
     if (adapters.length === 0) {
       log.warn("live mode with no FIRMS_MAP_KEY — no satellite detections; only WFIGS/NWS will ingest");
     }
@@ -189,6 +193,7 @@ async function main(): Promise<void> {
     alerts,
     sender,
     spreadScheduler,
+    airQuality,
     log,
     startedAt,
   });

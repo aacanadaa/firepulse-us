@@ -17,6 +17,7 @@ import type { AlertEngine } from "./notify/engine.js";
 import type { PushSender } from "./notify/outbox.js";
 import type { SpreadScheduler } from "./spread/scheduler.js";
 import { forecastOutlook } from "./spread/relevance.js";
+import type { AirQualityLayer } from "./sources/airnow.js";
 import { NEARBY_MAX_RADIUS_KM, nearbySummary } from "./nearby.js";
 import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
@@ -40,6 +41,7 @@ export interface ServerDeps {
   alerts: AlertEngine;
   sender: PushSender | null;
   spreadScheduler: SpreadScheduler;
+  airQuality: AirQualityLayer;
   log: Logger;
   startedAt: number;
 }
@@ -328,7 +330,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     return nearbySummary({ lat, lon }, radiusKm, engine.allIncidents(), hazards, Date.now(), (id, point) => {
       const forecast = deps.spreadScheduler.latest(id);
       return (forecast && forecastOutlook(forecast, point)) ?? undefined;
-    });
+    }, deps.airQuality);
   });
 
   const geocoder = new Geocoder({ userAgent: config.userAgent });
@@ -524,6 +526,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     accounts: deps.accounts,
     alerts: deps.alerts,
     sender: deps.sender,
+    ingest: (signals) => pipeline.ingestExternal(signals),
     log,
   });
 

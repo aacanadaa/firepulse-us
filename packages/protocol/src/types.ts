@@ -348,6 +348,20 @@ export interface NearbyFire {
   lon: number;
 }
 
+/** One air monitor's latest PM2.5 reading (EPA AirNow). */
+export interface AirQualityReading {
+  site: string;
+  siteName: string;
+  agency: string;
+  lat: number;
+  lon: number;
+  parameter: "PM2.5";
+  aqi: number;
+  /** EPA category: Good, Moderate, Unhealthy for sensitive groups, ... */
+  category: string;
+  observedAt: string;
+}
+
 /** Everything relevant to one point: nearby fires and alerts covering it. */
 export interface NearbySummary {
   lat: number;
@@ -363,6 +377,8 @@ export interface NearbySummary {
   unconfirmedHeat: number;
   /** Alerts whose area contains the point, most urgent first. */
   alerts: HazardAlertProperties[];
+  /** The nearest air monitor within 40 km, when one reported recently. */
+  airQuality?: AirQualityReading & { distanceKm: number };
 }
 
 /** A geocoded place a person can watch. */
