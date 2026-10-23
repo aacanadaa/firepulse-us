@@ -85,7 +85,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   const app = Fastify({
     loggerInstance: log,
     bodyLimit: 512 * 1024,
-    trustProxy: true,
+    trustProxy: config.trustProxy,
     disableRequestLogging: true,
   });
 
@@ -99,6 +99,19 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     } catch {
       done(Object.assign(new Error("invalid JSON"), { statusCode: 400 }), undefined);
     }
+  });
+
+  // A plain per-client budget for the whole HTTP API; health checks are exempt.
+  const withinBudget = perMinuteLimiter(config.rateLimitPerMinute);
+  app.addHook("onRequest", async (req, reply) => {
+    if (req.url === "/api/health" || req.url.startsWith("/ws")) return;
+    if (!withinBudget(req.ip)) return reply.code(429).header("retry-after", "60").send({ error: "too many requests" });
+  });
+
+  // Baseline security headers for API responses.
+  app.addHook("onSend", async (_req, reply) => {
+    reply.header("x-content-type-options", "nosniff");
+    reply.header("referrer-policy", "strict-origin-when-cross-origin");
   });
 
   await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
@@ -544,7 +557,12 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   });
 
   // Expose a metrics-friendly summary for load balancers.
-  app.get("/metrics", async (_req, reply) => {
+  app.get("/metrics", async (req, reply) => {
+    if (config.metricsToken) {
+      if (req.headers.authorization !== `Bearer ${config.metricsToken}`) return reply.code(401).send({ error: "unauthorized" });
+    } else if (process.env.NODE_ENV === "production") {
+      return reply.code(404).send({ error: "not found" });
+    }
     const stats = hub.computeStats();
     const lines = [
       "# HELP firepulse_hotspots_total Thermal hotspots retained",

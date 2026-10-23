@@ -26,6 +26,7 @@ import { PostgresAccountStore } from "./accounts/postgres.js";
 import { AlertEngine } from "./notify/engine.js";
 import { PushOutbox, webPushSender, type PushSender } from "./notify/outbox.js";
 import { SpreadScheduler } from "./spread/scheduler.js";
+import { FeedWatch } from "./realtime/feedWatch.js";
 import type { Store } from "./store/types.js";
 
 const log = pino({
@@ -205,6 +206,19 @@ async function main(): Promise<void> {
   pipeline.start();
   outbox?.start();
   spreadScheduler.start();
+
+  const feedWatch = new FeedWatch({ snapshot: () => health.snapshot(), log, webhookUrl: config.opsWebhookUrl || undefined });
+  const maintenance = setInterval(() => {
+    void feedWatch.check();
+  }, 5 * 60_000);
+  maintenance.unref();
+  const cleanup = setInterval(() => {
+    accounts
+      .cleanup(Date.now(), 90)
+      .then((n) => (n.sessions || n.alerts ? log.info(n, "removed expired sessions and old alert history") : undefined))
+      .catch((err) => log.warn({ err }, "account cleanup failed"));
+  }, 3_600_000);
+  cleanup.unref();
   hub.start();
   const heartbeat = hub.heartbeat();
 
@@ -228,6 +242,8 @@ async function main(): Promise<void> {
     hub.stop();
     outbox?.stop();
     spreadScheduler.stop();
+    clearInterval(maintenance);
+    clearInterval(cleanup);
     await pipeline.stop();
     await app.close().catch(() => undefined);
     await cache.close().catch(() => undefined);

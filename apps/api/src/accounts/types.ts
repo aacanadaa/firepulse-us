@@ -100,6 +100,8 @@ export interface AccountStore {
   dueAlerts(now: string, limit: number): Promise<AlertRecord[]>;
   markAlert(id: number, update: { status: AlertRecord["status"]; error?: string; retryAt?: string }): Promise<void>;
   recentAlerts(userId: string, limit: number): Promise<AlertRecord[]>;
+  /** Drops expired sessions and alert history older than `keepAlertsDays`. */
+  cleanup(now: number, keepAlertsDays: number): Promise<{ sessions: number; alerts: number }>;
   /** Alerts sent to a user since a time, for the hourly cap. */
   sentCountSince(userId: string, since: string): Promise<number>;
 }

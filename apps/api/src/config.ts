@@ -29,6 +29,17 @@ const userAgent =
 
 const webOrigin = (process.env.WEB_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
 
+function trustProxySetting(raw: string | undefined): boolean | string[] | ((addr: string, hop: number) => boolean) {
+  if (raw === undefined || raw === "") return process.env.NODE_ENV !== "production";
+  if (raw === "true" || raw === "false") return raw === "true";
+  // A hop count: trust that many proxies in front of the API.
+  if (/^\d+$/.test(raw)) {
+    const hops = Number(raw);
+    return (_addr, hop) => hop < hops;
+  }
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function vapidSubject(raw: string | undefined): string {
   const v = (raw ?? "").trim();
   if (!v) return "mailto:admin@localhost";
@@ -126,6 +137,19 @@ export const config = {
 
   /** Where the web app lives; sign-in redirects and cookies follow it. */
   webOrigin,
+
+  /**
+   * Which proxies to trust for the client address (rate limits). "true"
+   * trusts any X-Forwarded-For, which is only safe when nothing can reach
+   * the API except through your proxy; a hop count or CIDR list is safer.
+   */
+  trustProxy: trustProxySetting(process.env.TRUST_PROXY),
+  /** Requests per minute per client across the HTTP API. */
+  rateLimitPerMinute: num("RATE_LIMIT_PER_MINUTE", 600),
+  /** Bearer token for /metrics; without one, /metrics is off in production. */
+  metricsToken: process.env.METRICS_TOKEN ?? "",
+  /** Posted to when a data feed fails or goes stale (Slack/Discord-style webhook). */
+  opsWebhookUrl: process.env.OPS_WEBHOOK_URL ?? "",
 
   auth: {
     google:

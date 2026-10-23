@@ -81,7 +81,7 @@ export class MemoryAccountStore implements AccountStore {
     this.alerts = this.alerts.filter((a) => a.userId !== userId);
   }
 
-  async createSession(tokenHash: string, userId: string, expiresAt: string) {
+  async createSession(tokenHash: string, userId: string, expiresAt: string, _userAgent?: string | null) {
     this.sessions.set(tokenHash, { userId, expiresAt: Date.parse(expiresAt) });
   }
 
@@ -205,6 +205,20 @@ export class MemoryAccountStore implements AccountStore {
       .sort((a, b) => b.id - a.id)
       .slice(0, limit)
       .map((a) => ({ ...a }));
+  }
+
+  async cleanup(now: number, keepAlertsDays: number) {
+    let sessions = 0;
+    for (const [k, s] of this.sessions) {
+      if (s.expiresAt < now) {
+        this.sessions.delete(k);
+        sessions++;
+      }
+    }
+    const cutoff = new Date(now - keepAlertsDays * 86_400_000).toISOString();
+    const before = this.alerts.length;
+    this.alerts = this.alerts.filter((a) => a.createdAt >= cutoff);
+    return { sessions, alerts: before - this.alerts.length };
   }
 
   async sentCountSince(userId: string, since: string) {

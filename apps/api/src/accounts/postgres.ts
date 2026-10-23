@@ -328,6 +328,14 @@ export class PostgresAccountStore implements AccountStore {
     return rows.map(mapAlert);
   }
 
+  async cleanup(now: number, keepAlertsDays: number) {
+    const sessions = await this.pool.query(`delete from firepulse.user_session where expires_at < $1`, [new Date(now).toISOString()]);
+    const alerts = await this.pool.query(`delete from firepulse.alert_delivery where created_at < $1`, [
+      new Date(now - keepAlertsDays * 86_400_000).toISOString(),
+    ]);
+    return { sessions: sessions.rowCount ?? 0, alerts: alerts.rowCount ?? 0 };
+  }
+
   async sentCountSince(userId: string, since: string) {
     const { rows } = await this.pool.query(
       `select count(*)::int as n from firepulse.alert_delivery
