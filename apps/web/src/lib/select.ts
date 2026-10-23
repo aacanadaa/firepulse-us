@@ -2,7 +2,8 @@ import type { HotspotFeature, IncidentFeature } from "@firepulse/protocol";
 import type { LiveStore } from "./store";
 
 export type FeedTab = "growth" | "new" | "confidence" | "all";
-export type KindFilter = "all" | "estimated" | "official";
+/** "unconfirmed": single-pass satellite heat, kept out of the other lists. */
+export type KindFilter = "all" | "estimated" | "official" | "unconfirmed";
 
 export interface SelectOptions {
   /** epoch ms; null = live */
@@ -12,6 +13,8 @@ export interface SelectOptions {
   tab: FeedTab;
   /** exclude merged precursors (used by the map, not the feed) */
   excludeMerged?: boolean;
+  /** Keep single-pass satellite heat even when kind isn't "unconfirmed" (the map draws it faintly). */
+  includeUnconfirmed?: boolean;
 }
 
 /**
@@ -38,7 +41,13 @@ export function selectIncidents(store: LiveStore, opts: SelectOptions): Incident
       if (opts.excludeMerged) continue;
     }
     if (p.confidence < opts.minConfidence) continue;
-    if (opts.kind !== "all" && p.kind !== opts.kind) continue;
+    const single = p.kind === "estimated" && p.confirmation === "single";
+    if (opts.kind === "unconfirmed") {
+      if (!single) continue;
+    } else {
+      if (single && !opts.includeUnconfirmed) continue;
+      if (opts.kind !== "all" && p.kind !== opts.kind) continue;
+    }
     out.push(f);
   }
 

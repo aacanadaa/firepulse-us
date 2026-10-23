@@ -157,6 +157,8 @@ export type IncidentStatus =
   | "contained"
   | "merged";
 
+export type EstimateConfirmation = "single" | "persistent" | "corroborated";
+
 export type FireCause =
   | "vehicle"
   | "powerline"
@@ -202,6 +204,14 @@ export interface IncidentProperties {
   };
   /** Present only on estimates that were absorbed by an official incident. */
   mergedInto?: string;
+  /**
+   * Estimates only. "single": one satellite pass and one kind of evidence,
+   * which is usually a farm or industrial burn; "persistent": heat in passes
+   * at least 6 h apart; "corroborated": two independent kinds of detection
+   * (e.g. satellite and dispatch). Only confirmed estimates reach the
+   * household view and alerts.
+   */
+  confirmation?: EstimateConfirmation;
   /** ISO time the official perimeter/incident was first published. */
   officialSince?: string;
   containment?: number;
@@ -328,6 +338,7 @@ export interface NearbyFire {
   officialSince?: string;
   state?: string;
   county?: string;
+  confirmation?: EstimateConfirmation;
   /** The fire's centroid. */
   lat: number;
   lon: number;
@@ -339,8 +350,13 @@ export interface NearbySummary {
   lon: number;
   radiusKm: number;
   generatedAt: string;
-  /** Nearest first. */
+  /** Official fires and confirmed estimates, nearest first. */
   fires: NearbyFire[];
+  /**
+   * Satellite heat seen in one pass only, not yet confirmed: usually a farm
+   * or industrial burn. Counted, not listed.
+   */
+  unconfirmedHeat: number;
   /** Alerts whose area contains the point, most urgent first. */
   alerts: HazardAlertProperties[];
 }

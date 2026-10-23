@@ -2,6 +2,7 @@ import {
   bufferedHull,
   centroid,
   dbscan,
+  estimateConfirmation,
   EVIDENCE_WINDOW_MAX_MIN,
   fuseConfidence,
   inEvidenceWindow,
@@ -22,6 +23,7 @@ import type { RedisCache } from "../store/redis.js";
 import { cellOf, cellsOf, neighborhood } from "../h3.js";
 import type { AppConfig } from "../config.js";
 import type { Logger } from "pino";
+import { HeatMask } from "./heatMask.js";
 
 const DETECTION_KINDS = new Set<RawSignal["kind"]>(["thermal", "dispatch", "camera", "crowd"]);
 const CONTEXT_KINDS = new Set<RawSignal["kind"]>(["airquality", "weather"]);
@@ -89,6 +91,7 @@ export class FusionEngine {
     private readonly cfg: AppConfig,
     private readonly log: Logger,
     private readonly cache?: RedisCache,
+    private readonly heatMask: HeatMask = HeatMask.empty(),
   ) {}
 
   async hydrate(now = Date.now()): Promise<void> {
@@ -186,6 +189,8 @@ export class FusionEngine {
       if (members.length === 0) continue;
       const attached = attachContext(cluster.centroid, context, this.cfg.fusion.radiusKm * 2);
       if (!isPublishable(members, attached, this.cfg)) continue;
+      // Satellite-only heat on a refinery or gas flare is not a fire.
+      if (isThermalOnly(members) && this.heatMask.coversAll(members)) continue;
 
       const c = centroid(members);
       const clusterName = nameFor(members, c);
@@ -279,6 +284,7 @@ export class FusionEngine {
         growthScore: growthScore(growth, fused.breakdown.score, members),
         hotspotCount: members.filter((m) => m.kind === "thermal").length,
         evidence: fused.contributions,
+        confirmation: estimateConfirmation(members, track?.feature.properties.confirmation),
         cause: causeFor(members),
         county: stringMeta(members, "county"),
         state: stringMeta(members, "state"),
@@ -723,6 +729,10 @@ function isPublishable(
   return members.length + context.length >= 2;
 }
 
+function isThermalOnly(members: RawSignal[]): boolean {
+  return members.every((m) => m.kind === "thermal");
+}
+
 function attachContext(
   c: { lon: number; lat: number },
   context: RawSignal[],
@@ -929,6 +939,7 @@ export function signatureOf(f: IncidentFeature): string {
     ev,
     p.precursor?.leadTimeMinutes ?? "",
     p.mergedInto ?? "",
+    p.confirmation ?? "",
     Math.round(p.confidenceBreakdown.freshness * 100),
   ].join("|");
 }

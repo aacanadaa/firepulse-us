@@ -136,6 +136,13 @@ function PlaceCard({
           : ""}
       </p>
 
+      {summary && summary.unconfirmedHeat > 0 ? (
+        <p className="np-note">
+          Also {summary.unconfirmedHeat} unconfirmed satellite heat {summary.unconfirmedHeat === 1 ? "detection" : "detections"}{" "}
+          nearby, usually farm or industrial burns. They show faintly on the map and become fires here if seen again.
+        </p>
+      ) : null}
+
       {fires.slice(0, 8).map((f) => (
         <FireRow key={f.id} fire={f} now={now} onSelect={() => onSelectFire(f)} />
       ))}

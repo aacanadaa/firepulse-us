@@ -115,6 +115,9 @@ export const config = {
     userAgent,
   },
 
+  /** Static heat sources (refineries, flares) that fusion ignores. */
+  heatMaskPath: process.env.HEAT_MASK_PATH || fileURLToPath(new URL("../data/heat-mask.json", import.meta.url)),
+
   h3Resolution: 8,
   publicConfig: {
     fusionRadiusKm: num("FUSION_RADIUS_KM", 2),

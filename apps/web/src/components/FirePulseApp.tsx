@@ -195,7 +195,7 @@ export default function FirePulseApp() {
   );
 
   const mapIncidents = useMemo(
-    () => selectIncidents(store, { cursor, minConfidence: 0, kind: "all", tab: "all" }),
+    () => selectIncidents(store, { cursor, minConfidence: 0, kind: "all", tab: "all", includeUnconfirmed: true }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [version, cursor],
   );
@@ -221,7 +221,8 @@ export default function FirePulseApp() {
     let official = 0;
     for (const f of mapIncidents) {
       if (f.properties.kind === "official") official++;
-      else early++;
+      // Single-pass satellite heat is on the map but isn't counted as a fire.
+      else if (f.properties.confirmation !== "single") early++;
     }
     return { early, official, hotspots: hotspots.length };
     // eslint-disable-next-line react-hooks/exhaustive-deps

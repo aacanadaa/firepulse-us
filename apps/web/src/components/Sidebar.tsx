@@ -48,6 +48,7 @@ const KINDS: { id: KindFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "estimated", label: "Early" },
   { id: "official", label: "Official" },
+  { id: "unconfirmed", label: "Unconfirmed" },
 ];
 
 const CONFIDENCE = [

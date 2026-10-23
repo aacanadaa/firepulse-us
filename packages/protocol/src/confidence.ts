@@ -34,7 +34,9 @@
 
 import type {
   ConfidenceBreakdown,
+  EstimateConfirmation,
   EvidenceContribution,
+  IncidentProperties,
   Modality,
   RawSignal,
   SourceId,
@@ -475,6 +477,35 @@ export const MODALITY_LABEL: Record<Modality, string> = {
   weather: "weather",
   official: "official",
 };
+
+/** Thermal detections at least this far apart come from separate passes. */
+export const PERSISTENCE_GAP_MIN = 360;
+
+/**
+ * How well an estimate is confirmed: see IncidentProperties.confirmation.
+ * `previous` keeps a track confirmed once it has been.
+ */
+export function estimateConfirmation(
+  members: Pick<RawSignal, "source" | "kind" | "observedAt">[],
+  previous?: EstimateConfirmation,
+): EstimateConfirmation {
+  const modalities = new Set(
+    members.filter((m) => SOURCE_PROFILES[m.source]?.detector).map((m) => SOURCE_PROFILES[m.source]!.modality),
+  );
+  if (modalities.size >= 2 || previous === "corroborated") return "corroborated";
+  const thermal = members
+    .filter((m) => m.kind === "thermal")
+    .map((m) => Date.parse(m.observedAt))
+    .filter((t) => Number.isFinite(t));
+  const span = thermal.length > 1 ? Math.max(...thermal) - Math.min(...thermal) : 0;
+  if (span >= PERSISTENCE_GAP_MIN * 60_000 || previous === "persistent") return "persistent";
+  return "single";
+}
+
+/** Official fires and confirmed estimates: what a household should hear about. */
+export function isConfirmedFire(p: Pick<IncidentProperties, "kind" | "confirmation">): boolean {
+  return p.kind === "official" || (p.confirmation !== undefined && p.confirmation !== "single");
+}
 
 /** Individual hotspot display confidence (not a cluster score). */
 export function hotspotConfidence(signal: Pick<RawSignal, "source" | "providerConfidence" | "frp">): number {

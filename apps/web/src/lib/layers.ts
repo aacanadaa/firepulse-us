@@ -157,6 +157,15 @@ export function hotspotLayers(opts: {
 
 const dashExtension = new PathStyleExtension({ dash: true });
 
+/** Single-pass satellite heat is usually a farm or industrial burn: drawn faint, never pulsing. */
+function unconfirmed(f: IncidentFeature): boolean {
+  return f.properties.kind === "estimated" && f.properties.confirmation === "single";
+}
+
+function withAlpha(color: RGBA, alpha: number): RGBA {
+  return [color[0], color[1], color[2], alpha];
+}
+
 export function estimatedZoneLayer(
   incidents: IncidentFeature[],
   visible: boolean,
@@ -169,8 +178,12 @@ export function estimatedZoneLayer(
     pickable: true,
     filled: true,
     getPolygon: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getFillColor: rgba(theme.estimatedFill),
+    getFillColor: (f: IncidentFeature) => {
+      const fill = rgba(theme.estimatedFill);
+      return unconfirmed(f) ? withAlpha(fill, Math.round(fill[3] * 0.4)) : fill;
+    },
     stroked: false,
+    updateTriggers: { getFillColor: theme.estimatedFill },
   });
 }
 
@@ -208,13 +221,8 @@ export function estimatedOutlineLayer(
     visible,
     pickable: false,
     getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getColor: [
-      ...(theme.estimated
-        .replace("#", "")
-        .match(/.{2}/g)
-        ?.map((h) => parseInt(h, 16)) ?? [255, 79, 0]),
-      150 + Math.round(pulse * 90),
-    ] as RGBA,
+    getColor: (f: IncidentFeature) =>
+      withAlpha(rgba(theme.estimated), unconfirmed(f) ? 90 : 150 + Math.round(pulse * 90)),
     widthUnits: "pixels",
     getWidth: 1.4,
     widthMinPixels: 1.1,
@@ -222,7 +230,7 @@ export function estimatedOutlineLayer(
     capRounded: false,
     getDashArray: [5, 3],
     extensions: [dashExtension],
-    updateTriggers: { getColor: Math.round(pulse * 10) },
+    updateTriggers: { getColor: [Math.round(pulse * 10), theme.estimated] },
   } as never);
 }
 
@@ -246,7 +254,8 @@ export function markerLayer(
     // provisional marker distinguishable from a thermal speck at any zoom.
     filled: !estimated,
     stroked: true,
-    getLineColor: rgba(estimated ? theme.estimated : theme.markerStroke),
+    getLineColor: (f: IncidentFeature) =>
+      unconfirmed(f) ? withAlpha(rgba(theme.estimated), 110) : rgba(estimated ? theme.estimated : theme.markerStroke),
     lineWidthUnits: "pixels",
     getLineWidth: estimated ? 1.6 : 1.2,
     getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],

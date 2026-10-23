@@ -2294,3 +2294,10 @@ button {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+.np-note {
+  margin: 2px 0 8px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}

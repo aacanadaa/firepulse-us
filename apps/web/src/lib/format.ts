@@ -42,6 +42,7 @@ interface FireLike {
   cause?: string;
   containment?: number;
   firstDetectedAt: string;
+  confirmation?: "single" | "persistent" | "corroborated";
 }
 
 /**
@@ -57,7 +58,9 @@ export function plainFireStatus(p: FireLike, now: number): string {
     return p.containment != null ? `Official fire · ${p.containment}% contained` : "Official fire · containment not reported";
   }
   const age = formatAgeShort(now - Date.parse(p.firstDetectedAt));
-  return `Possible fire · detected ${age} ago · not confirmed by fire agencies`;
+  if (p.confirmation === "single") return `Satellite heat seen once ${age} ago · often a farm or industrial burn`;
+  const how = p.confirmation === "corroborated" ? "reported by more than one source" : "heat seen on more than one pass";
+  return `Possible fire · ${how} · first seen ${age} ago · not confirmed by fire agencies`;
 }
 
 /** A duration in minutes, e.g. "45 min" or "30 h". */

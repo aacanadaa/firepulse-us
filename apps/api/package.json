@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "predev": "pnpm --filter @firepulse/protocol build",
-    "prebuild": "pnpm --filter @firepulse/protocol build"
+    "prebuild": "pnpm --filter @firepulse/protocol build",
+    "heat-mask:build": "tsx scripts/build-heat-mask.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

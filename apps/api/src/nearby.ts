@@ -3,6 +3,7 @@ import {
   compassPoint,
   distanceToRingKm,
   haversineKm,
+  isConfirmedFire,
   type IncidentFeature,
   type LngLat,
   type NearbyFire,
@@ -29,6 +30,7 @@ export function nearbySummary(
   now = Date.now(),
 ): NearbySummary {
   const fires: NearbyFire[] = [];
+  let unconfirmedHeat = 0;
   for (const f of incidents) {
     const p = f.properties;
     if (p.mergedInto) continue;
@@ -37,6 +39,10 @@ export function nearbySummary(
     const rings = outerRings(f);
     const distanceKm = rings.length > 0 ? Math.min(...rings.map((r) => distanceToRingKm(point, r))) : haversineKm(point, center);
     if (distanceKm > radiusKm) continue;
+    if (!isConfirmedFire(p)) {
+      unconfirmedHeat++;
+      continue;
+    }
     const bearing = bearingDeg(point, center);
     fires.push({
       id: p.id,
@@ -56,6 +62,7 @@ export function nearbySummary(
       officialSince: p.officialSince,
       state: p.state,
       county: p.county,
+      confirmation: p.confirmation,
       lat: p.lat,
       lon: p.lon,
     });
@@ -67,6 +74,7 @@ export function nearbySummary(
     radiusKm,
     generatedAt: new Date(now).toISOString(),
     fires: fires.slice(0, MAX_FIRES),
+    unconfirmedHeat,
     alerts: hazards.covering(point, now).map((a) => a.properties),
   };
 }

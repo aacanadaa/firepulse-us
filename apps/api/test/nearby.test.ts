@@ -108,10 +108,27 @@ describe("nearby summary", () => {
     ];
     const s = nearbySummary(HOME, 25, incidents, hazards, NOW);
     expect(s.fires.map((f) => f.id)).toEqual(["big", "small"]);
+    expect(s.unconfirmedHeat).toBe(0);
     expect(s.fires[0]!.distanceKm).toBeGreaterThan(4);
     expect(s.fires[0]!.distanceKm).toBeLessThan(7);
     expect(s.fires[0]!.direction).toBe("E");
     expect(s.fires[1]!.direction).toBe("N");
+  });
+
+  it("counts single-pass satellite heat instead of listing it", () => {
+    const s = nearbySummary(
+      HOME,
+      25,
+      [
+        fire("burn", { lon: HOME.lon + 0.05, lat: HOME.lat }, 0.3, { kind: "estimated", confirmation: "single", confidence: 40 }),
+        fire("real", { lon: HOME.lon - 0.05, lat: HOME.lat }, 0.3, { kind: "estimated", confirmation: "persistent", confidence: 60 }),
+      ],
+      new HazardLayer(),
+      NOW,
+    );
+    expect(s.fires.map((f) => f.id)).toEqual(["real"]);
+    expect(s.fires[0]!.confirmation).toBe("persistent");
+    expect(s.unconfirmedHeat).toBe(1);
   });
 
   it("reports zero distance from inside a perimeter and lists alerts covering the point", () => {
