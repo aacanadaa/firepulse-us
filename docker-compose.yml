@@ -37,6 +37,7 @@ services:
       FIREPULSE_USER_AGENT: ${FIREPULSE_USER_AGENT:-}
       DATA_MODE: ${DATA_MODE:-live}
       FIRMS_MAP_KEY: ${FIRMS_MAP_KEY:-}
+      INGEST_WEBHOOK_SECRET: ${INGEST_WEBHOOK_SECRET:-}
       DATABASE_URL: postgres://firepulse:firepulse@db:5432/firepulse
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: "*"
@@ -44,6 +45,16 @@ services:
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }
+
+  goes-worker:
+    build:
+      context: apps/goes-worker
+    environment:
+      FIREPULSE_API_URL: http://api:8790
+      INGEST_WEBHOOK_SECRET: ${INGEST_WEBHOOK_SECRET:-}
+      FIREPULSE_USER_AGENT: ${FIREPULSE_USER_AGENT:-}
+    depends_on: [api]
+    restart: unless-stopped
 
   web:
     build:

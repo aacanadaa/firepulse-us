@@ -20,6 +20,8 @@ export const SOURCE_IDS = [
   // Tier 2 — satellite thermal
   "goes16",
   "goes18",
+  // GOES-East since April 2025 (replaced GOES-16).
+  "goes19",
   "viirs",
   "modis",
   // Tier 3 — environmental context

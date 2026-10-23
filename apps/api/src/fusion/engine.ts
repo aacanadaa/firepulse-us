@@ -740,7 +740,7 @@ function isPublishable(
   const modalities = new Set(profiles.map((p) => p.modality));
   const thermal = members.filter((m) => m.kind === "thermal");
   const strong = members.some((m) =>
-    ["cad", "goes16", "goes18", "viirs", "alertca", "calfire"].includes(m.source),
+    ["cad", "goes16", "goes18", "goes19", "viirs", "alertca", "calfire"].includes(m.source),
   );
   const frp = thermal.reduce((sum, m) => sum + (m.frp ?? 0), 0);
 

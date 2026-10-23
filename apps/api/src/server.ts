@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { RawSignal } from "@firepulse/protocol";
+import { SOURCE_PROFILES, type RawSignal } from "@firepulse/protocol";
 import type { AppConfig } from "./config.js";
 import type { Store } from "./store/types.js";
 import type { RedisCache } from "./store/redis.js";
@@ -85,6 +85,18 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     bodyLimit: 512 * 1024,
     trustProxy: true,
     disableRequestLogging: true,
+  });
+
+  // Webhook signatures cover the exact bytes sent, so keep the raw body.
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    (req as typeof req & { rawBody?: string }).rawBody = body as string;
+    if (body === "") return done(null, {});
+    try {
+      done(null, JSON.parse(body as string));
+    } catch {
+      done(Object.assign(new Error("invalid JSON"), { statusCode: 400 }), undefined);
+    }
   });
 
   await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
@@ -352,7 +364,8 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
 
   function verifySignature(rawBody: string, header: string | undefined): boolean {
     const secret = process.env.INGEST_WEBHOOK_SECRET;
-    if (!secret) return true;
+    // Open hooks are a local-development convenience only.
+    if (!secret) return process.env.NODE_ENV !== "production";
     if (!header) return false;
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
     const got = Buffer.from(header.replace(/^sha256=/, ""), "utf8");
@@ -362,7 +375,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   }
 
   app.post<{ Body: unknown }>("/api/v1/hooks/cad", async (req, reply) => {
-    const raw = JSON.stringify(req.body ?? {});
+    const raw = (req as typeof req & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
     if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
       return reply.code(401).send({ error: "invalid signature" });
     }
@@ -404,8 +417,67 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     return { accepted: signals.length, inserted };
   });
 
+  /**
+   * Batches of satellite fire pixels from the GOES worker (apps/goes-worker).
+   * Low-probability pixels are dropped; the rest map to provider confidence.
+   */
+  const GOES_MASK_CONFIDENCE: Record<number, number> = {
+    10: 0.9, 30: 0.9, // processed fire
+    11: 0.95, 31: 0.95, // saturated fire
+    12: 0.7, 32: 0.7, // cloud contaminated
+    13: 0.8, 33: 0.8, // high probability
+    14: 0.6, 34: 0.6, // medium probability
+  };
+  const THERMAL_SOURCES = new Set(["goes16", "goes18", "goes19"]);
+  app.post<{ Body: { source?: string; scanStart?: string; detections?: unknown[] } }>(
+    "/api/v1/hooks/thermal",
+    { bodyLimit: 2 * 1024 * 1024 },
+    async (req, reply) => {
+      const raw = (req as typeof req & { rawBody?: string }).rawBody ?? "";
+      if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
+        return reply.code(401).send({ error: "invalid signature" });
+      }
+      const source = String(req.body?.source ?? "");
+      const scanStart = Date.parse(String(req.body?.scanStart ?? ""));
+      if (!THERMAL_SOURCES.has(source) || !Number.isFinite(scanStart) || !Array.isArray(req.body?.detections)) {
+        return reply.code(422).send({ error: "source, scanStart and detections are required" });
+      }
+      const observedAt = new Date(scanStart).toISOString();
+      const now = new Date().toISOString();
+      const label = SOURCE_PROFILES[source as RawSignal["source"]].short;
+      const signals: RawSignal[] = [];
+      for (const d of req.body!.detections!.slice(0, 20_000) as Record<string, unknown>[]) {
+        const lat = Number(d.lat);
+        const lon = Number(d.lon);
+        const confidence = GOES_MASK_CONFIDENCE[Number(d.mask)];
+        if (confidence === undefined || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 85 || Math.abs(lon) > 180) continue;
+        const frp = Number(d.frp);
+        const id = `${source}-${observedAt}-${lat.toFixed(4)}-${lon.toFixed(4)}`;
+        signals.push({
+          id,
+          source: source as RawSignal["source"],
+          kind: "thermal",
+          tier: 2,
+          lon,
+          lat,
+          observedAt,
+          receivedAt: now,
+          frp: Number.isFinite(frp) && frp > 0 ? frp : undefined,
+          providerConfidence: confidence,
+          label: `${label}${Number.isFinite(frp) && frp > 0 ? ` ${Math.round(frp * 10) / 10} MW` : ""}`,
+          meta: { dedupeKey: id, mask: Number(d.mask), product: "ABI-L2-FDCC" },
+        });
+      }
+      const id = `goes-worker-${source}`;
+      deps.health.register(id, `${label} fire detections (GOES worker)`, "signals", 5 * 60_000);
+      deps.health.success(id, { now: Date.now(), count: signals.length, observedAt: [observedAt] });
+      const inserted = signals.length > 0 ? await pipeline.ingestExternal(signals) : 0;
+      return reply.code(202).send({ accepted: signals.length, inserted });
+    },
+  );
+
   app.post<{ Body: unknown }>("/api/v1/hooks/crowd", async (req, reply) => {
-    const raw = JSON.stringify(req.body ?? {});
+    const raw = (req as typeof req & { rawBody?: string }).rawBody ?? JSON.stringify(req.body ?? {});
     if (!verifySignature(raw, req.headers["x-firepulse-signature"] as string | undefined)) {
       return reply.code(401).send({ error: "invalid signature" });
     }

@@ -123,6 +123,17 @@ const SEEDS: Record<SourceId, ProfileSeed> = {
     detector: true,
     color: "#ffcf5c",
   },
+  goes19: {
+    label: "GOES-19 ABI Fire",
+    short: "GOES-19",
+    tier: 2,
+    modality: "satellite-thermal",
+    weight: 0.6,
+    halfLifeMin: 90,
+    windowMin: 120,
+    detector: true,
+    color: "#ffd166",
+  },
   viirs: {
     label: "VIIRS 375m",
     short: "VIIRS",
