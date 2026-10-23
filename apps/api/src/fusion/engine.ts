@@ -102,6 +102,9 @@ export class FusionEngine {
     const active = await this.store.activeIncidents();
     for (const f of active) {
       const p = f.properties;
+      // Rows saved before confirmation was stored are treated as unconfirmed
+      // until a pass sees them again.
+      if (p.kind === "estimated" && !p.confirmation) p.confirmation = "single";
       const track: Track = {
         feature: f,
         signature: signatureOf(f),

@@ -62,6 +62,8 @@ describe.skipIf(!url)("Postgres store", () => {
     const estimate = first.upserts[0]!;
     const stored = (await store.activeIncidents()).find((f) => f.id === estimate.id);
     expect(stored?.properties.confirmation).toBe("persistent");
+    // Restored estimates keep their evidence time, not the time the row was written.
+    expect(stored?.properties.updatedAt).toBe(estimate.properties.updatedAt);
 
     const ring = circleRing({ lon: -120.5, lat: 38.2 }, 2, 24);
     const official: IncidentFeature = {

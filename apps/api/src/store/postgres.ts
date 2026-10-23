@@ -547,7 +547,8 @@ function mapIncident(r: IncidentRow): IncidentFeature {
       confidenceBreakdown: r.confidence_breakdown as IncidentFeature["properties"]["confidenceBreakdown"],
       sources: (r.sources as IncidentFeature["properties"]["sources"]) ?? [],
       firstDetectedAt: new Date(r.first_detected_at).toISOString(),
-      updatedAt: new Date(r.updated_at).toISOString(),
+      // updated_at is when the row was last written; last_signal_at is the newest evidence.
+      updatedAt: new Date(r.last_signal_at).toISOString(),
       areaAcres: Number(r.area_acres),
       areaSqKm: Number(r.area_sq_km),
       frp: Number(r.frp),
