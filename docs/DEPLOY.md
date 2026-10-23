@@ -63,6 +63,16 @@ Health check: `GET /api/health`. It lists every data feed with its status.
 
 Rewrites are fixed at build time, so redeploy after changing `API_INTERNAL_URL`.
 
+## 3a. Continuous deployment
+
+Once the Vercel GitHub App is installed on the account and the project is linked
+to the repository, **every push to `master` deploys production** and every pull
+request gets its own preview URL. No CLI step, no token in the repository.
+
+The build inlines `NEXT_PUBLIC_API_URL`. If the API's public URL changes, update
+the project's environment variable and redeploy (Vercel → Deployments →
+Redeploy, or push an empty commit): an existing build keeps the old URL forever.
+
 ## 4. GOES worker
 
 Build `apps/goes-worker/Dockerfile` (context `apps/goes-worker`) and set
