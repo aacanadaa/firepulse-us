@@ -39,6 +39,18 @@ services:
       FIRMS_MAP_KEY: ${FIRMS_MAP_KEY:-}
       INGEST_WEBHOOK_SECRET: ${INGEST_WEBHOOK_SECRET:-}
       DATABASE_URL: postgres://firepulse:firepulse@db:5432/firepulse
+      AIRNOW_API_KEY: ${AIRNOW_API_KEY:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      OPS_WEBHOOK_URL: ${OPS_WEBHOOK_URL:-}
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: "*"
     ports: ["8790:8790"]
@@ -62,6 +74,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8790
+        API_INTERNAL_URL: http://api:8790
     ports: ["3000:3000"]
     depends_on: [api]
 

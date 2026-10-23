@@ -7,6 +7,21 @@ const apiOrigin = (process.env.API_INTERNAL_URL || process.env.NEXT_PUBLIC_API_U
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Permissions-Policy", value: "geolocation=(self), camera=(), microphone=()" },
+        ],
+      },
+      // Browsers must always get the newest service worker.
+      { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] },
+    ];
+  },
   async rewrites() {
     return ["auth", "me", "push"].map((area) => ({
       source: `/api/v1/${area}/:path*`,

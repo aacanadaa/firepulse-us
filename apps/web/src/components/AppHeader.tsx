@@ -300,6 +300,12 @@ export default function AppHeader({
                   </div>
                 ) : null}
 
+                <div className="pop-section legal-links">
+                  <a href="/about">About &amp; data sources</a>
+                  <a href="/privacy">Privacy</a>
+                  <a href="/terms">Terms</a>
+                </div>
+
                 <div className="pop-section">
                   <div className="kicker" style={{ marginBottom: 8 }}>
                     Pipeline

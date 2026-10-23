@@ -77,7 +77,12 @@ function SignIn({ account, error }: { account: Account; error: string | null }) 
             minLength={mode === "signup" ? 8 : 1}
           />
         </label>
-        {mode === "signup" ? <p className="acct-hint">At least 8 characters. There's no email reset, so keep it somewhere safe.</p> : null}
+        {mode === "signup" ? (
+          <p className="acct-hint">
+            At least 8 characters. There&apos;s no email reset, so keep it somewhere safe. Creating an account means you
+            accept the <a href="/terms">terms</a> and <a href="/privacy">privacy policy</a>.
+          </p>
+        ) : null}
         {problem ? <p className="acct-error" role="alert">{problem}</p> : null}
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? "One moment…" : mode === "signup" ? "Create account" : "Sign in"}
@@ -374,6 +379,11 @@ export default function AccountPanel({
         <p className="np-disclaimer">
           FirePulse alerts are not official warnings and can be late or wrong. Follow local officials and call 911 in an
           emergency.
+        </p>
+        <p className="np-disclaimer legal-links">
+          <a href="/about">About &amp; data</a>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
         </p>
       </aside>
     </>
