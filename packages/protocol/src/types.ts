@@ -339,6 +339,8 @@ export interface NearbyFire {
   state?: string;
   county?: string;
   confirmation?: EstimateConfirmation;
+  /** The latest next-day forecast from this place, when one has run. */
+  outlook?: SpreadOutlook;
   /** The fire's centroid. */
   lat: number;
   lon: number;
@@ -642,6 +644,19 @@ export interface SpreadForecast {
   model?: { name: string; run: string; testAucPr: number };
   /** True for simulator incidents. */
   demo?: boolean;
+}
+
+/** A next-day forecast seen from one place, distances in km. */
+export interface SpreadOutlook {
+  generatedAt: string;
+  /** Nearest cell burning today; null when the window has none. */
+  todayKm: number | null;
+  /** Nearest new cell at or above the "likely" band. */
+  likelyKm: number | null;
+  /** Nearest new cell at or above the "very likely" band. */
+  veryLikelyKm: number | null;
+  /** Likely growth comes at least 1 km closer than today's fire. */
+  toward: boolean;
 }
 
 /** Display bands for spread scores. Never show scores as percentages. */

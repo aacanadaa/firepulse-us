@@ -1,7 +1,7 @@
-import type { HazardAlertFeature, IncidentFeature } from "@firepulse/protocol";
+import type { HazardAlertFeature, IncidentFeature, SpreadForecast } from "@firepulse/protocol";
 import type { Logger } from "pino";
 import type { AccountStore, AlertDraft } from "../accounts/types.js";
-import { hazardAlerts, incidentAlerts, type Watcher } from "./rules.js";
+import { hazardAlerts, incidentAlerts, spreadAlerts, type Watcher } from "./rules.js";
 
 const RELOAD_MS = 5 * 60_000;
 
@@ -57,6 +57,28 @@ export class AlertEngine {
   async reload(): Promise<void> {
     this.watchers = await this.deps.accounts.watchers();
     this.loadedAt = this.now();
+  }
+
+  /** Watched places as of the last reload. */
+  get places(): Watcher[] {
+    return this.watchers;
+  }
+
+  /** A next-day forecast came in for a fire. */
+  async onSpread(f: IncidentFeature, forecast: SpreadForecast): Promise<number> {
+    const watchers = await this.current();
+    if (watchers.length === 0 || !forecast.corners) return 0;
+    const c = forecast.corners;
+    const box: [number, number, number, number] = [
+      Math.min(c.nw[0], c.sw[0]),
+      Math.min(c.sw[1], c.se[1]),
+      Math.max(c.ne[0], c.se[0]),
+      Math.max(c.nw[1], c.ne[1]),
+    ];
+    const inserted = await this.insert(spreadAlerts(f, forecast, near(watchers, box), this.now()), this.now());
+    const queued = inserted.filter((a) => a.status === "pending").length;
+    if (queued > 0) this.deps.onQueued?.();
+    return queued;
   }
 
   private async current(): Promise<Watcher[]> {

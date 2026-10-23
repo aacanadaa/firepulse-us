@@ -23,6 +23,7 @@ import { MemoryAccountStore } from "./accounts/memory.js";
 import { PostgresAccountStore } from "./accounts/postgres.js";
 import { AlertEngine } from "./notify/engine.js";
 import { PushOutbox, webPushSender, type PushSender } from "./notify/outbox.js";
+import { SpreadScheduler } from "./spread/scheduler.js";
 import type { Store } from "./store/types.js";
 
 const log = pino({
@@ -164,6 +165,13 @@ async function main(): Promise<void> {
   });
   // Downloads (if any) happen in the background; the API serves meanwhile.
   void spread.start();
+  const spreadScheduler = new SpreadScheduler({
+    forecast: (id) => (spread.service ? spread.service.forecast(id) : Promise.resolve(null)),
+    incidents: () => engine.allIncidents(),
+    places: () => alerts.places,
+    onForecast: (incident, forecast) => alerts.onSpread(incident, forecast),
+    log,
+  });
 
   const app = await createServer({
     config,
@@ -180,6 +188,7 @@ async function main(): Promise<void> {
     accounts,
     alerts,
     sender,
+    spreadScheduler,
     log,
     startedAt,
   });
@@ -187,6 +196,7 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: config.host });
   pipeline.start();
   outbox?.start();
+  spreadScheduler.start();
   hub.start();
   const heartbeat = hub.heartbeat();
 
@@ -209,6 +219,7 @@ async function main(): Promise<void> {
     clearInterval(heartbeat);
     hub.stop();
     outbox?.stop();
+    spreadScheduler.stop();
     await pipeline.stop();
     await app.close().catch(() => undefined);
     await cache.close().catch(() => undefined);

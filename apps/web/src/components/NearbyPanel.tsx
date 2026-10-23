@@ -70,6 +70,16 @@ function FireRow({ fire, now, onSelect }: { fire: NearbyFire; now: number; onSel
       <span className="np-fire-body">
         <span className="np-fire-name">{fire.name}</span>
         <span className="np-fire-status">{plainFireStatus(fire, now)}</span>
+        {fire.outlook ? (
+          <span className={`np-fire-outlook ${fire.outlook.toward ? "toward" : ""}`}>
+            {fire.outlook.toward
+              ? `Forecast: may grow toward here, ${
+                  fire.outlook.likelyKm === 0 ? "reaching this place" : `to about ${formatKm(fire.outlook.likelyKm ?? 0)} away`
+                } in the next day`
+              : "Forecast: not expected to come closer in the next day"}{" "}
+            <em>(experimental)</em>
+          </span>
+        ) : null}
       </span>
       <span className="np-fire-where mono">
         {inside ? "You're inside" : `${formatKm(fire.distanceKm)} ${fire.direction}`}

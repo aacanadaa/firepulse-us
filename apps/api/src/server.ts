@@ -15,6 +15,8 @@ import { registerAccountRoutes } from "./accounts/routes.js";
 import type { AccountStore } from "./accounts/types.js";
 import type { AlertEngine } from "./notify/engine.js";
 import type { PushSender } from "./notify/outbox.js";
+import type { SpreadScheduler } from "./spread/scheduler.js";
+import { forecastOutlook } from "./spread/relevance.js";
 import { NEARBY_MAX_RADIUS_KM, nearbySummary } from "./nearby.js";
 import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
@@ -37,6 +39,7 @@ export interface ServerDeps {
   accounts: AccountStore;
   alerts: AlertEngine;
   sender: PushSender | null;
+  spreadScheduler: SpreadScheduler;
   log: Logger;
   startedAt: number;
 }
@@ -237,6 +240,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     clearTimeout(timer);
     if (result === "wait") return reply.code(202).send({ incidentId: incident.id, status: "computing" });
     if (!result) return reply.code(404).send({ error: "incident not found" });
+    deps.spreadScheduler.remember(result);
     return result;
   });
 
@@ -309,7 +313,10 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
       return reply.code(400).send({ error: "lat and lon are required" });
     }
     const radiusKm = Math.min(NEARBY_MAX_RADIUS_KM, Math.max(1, Number(req.query.radiusKm ?? 25) || 25));
-    return nearbySummary({ lat, lon }, radiusKm, engine.allIncidents(), hazards);
+    return nearbySummary({ lat, lon }, radiusKm, engine.allIncidents(), hazards, Date.now(), (id, point) => {
+      const forecast = deps.spreadScheduler.latest(id);
+      return (forecast && forecastOutlook(forecast, point)) ?? undefined;
+    });
   });
 
   const geocoder = new Geocoder({ userAgent: config.userAgent });

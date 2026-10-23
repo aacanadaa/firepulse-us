@@ -2530,3 +2530,18 @@ button {
 .np-cta .btn {
   justify-self: start;
 }
+
+.np-fire-outlook {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.np-fire-outlook.toward {
+  color: var(--warn);
+}
+
+.np-fire-outlook em {
+  font-style: normal;
+  color: var(--faint);
+}

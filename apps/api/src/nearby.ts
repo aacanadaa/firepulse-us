@@ -8,6 +8,7 @@ import {
   type LngLat,
   type NearbyFire,
   type NearbySummary,
+  type SpreadOutlook,
 } from "@firepulse/protocol";
 import { outerRings } from "./fusion/engine.js";
 import type { HazardLayer } from "./realtime/hazards.js";
@@ -28,6 +29,8 @@ export function nearbySummary(
   incidents: IncidentFeature[],
   hazards: HazardLayer,
   now = Date.now(),
+  /** The latest forecast for a fire, seen from this point, if one has run. */
+  outlook?: (incidentId: string, point: LngLat) => SpreadOutlook | undefined,
 ): NearbySummary {
   const fires: NearbyFire[] = [];
   let unconfirmedHeat = 0;
@@ -63,6 +66,7 @@ export function nearbySummary(
       state: p.state,
       county: p.county,
       confirmation: p.confirmation,
+      outlook: outlook?.(p.id, point),
       lat: p.lat,
       lon: p.lon,
     });

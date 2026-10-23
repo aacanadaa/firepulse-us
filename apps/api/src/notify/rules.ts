@@ -8,7 +8,9 @@ import {
   type AlertSeverity,
   type HazardAlertFeature,
   type IncidentFeature,
+  type SpreadForecast,
 } from "@firepulse/protocol";
+import { forecastOutlook } from "../spread/relevance.js";
 import type { AlertDraft, PlaceRecord, UserSettings } from "../accounts/types.js";
 
 /** A watched place with its owner's alert settings. */
@@ -159,6 +161,36 @@ export function incidentAlerts(f: IncidentFeature, watchers: Watcher[], now: num
       );
       if (closer) out.closer.push(closer);
     }
+  }
+  return out;
+}
+
+/**
+ * The experimental next-day forecast expects a fire to grow toward a place:
+ * likely cells within the place's radius and closer than today's fire.
+ * Never urgent; at most once per fire, place and local day.
+ */
+export function spreadAlerts(f: IncidentFeature, forecast: SpreadForecast, watchers: Watcher[], now: number): AlertDraft[] {
+  const p = f.properties;
+  if (p.mergedInto || p.cause === "prescribed" || !isConfirmedFire(p) || forecast.status !== "ready") return [];
+  const subject = p.kind === "official" && p.precursor ? p.precursor.estimateId : p.id;
+  const out: AlertDraft[] = [];
+  for (const w of watchers) {
+    const o = forecastOutlook(forecast, w);
+    if (!o || !o.toward || o.likelyKm === null || o.likelyKm > w.radiusKm) continue;
+    const today = o.todayKm === null ? "" : ` (today's fire is ${km(o.todayKm)} away)`;
+    const d = draft(
+      w,
+      "spread",
+      o.likelyKm <= 2 || (o.veryLikelyKm !== null && o.veryLikelyKm <= 5) ? "warning" : "info",
+      subject,
+      localDate(now, w.settings.timezone),
+      `${p.name} may spread toward ${w.name}`,
+      `The experimental next-day forecast shows likely growth ${o.likelyKm === 0 ? `reaching ${w.name}` : `about ${km(o.likelyKm)} from ${w.name}`}${today}. ${NOT_ORDER}`,
+      `/?incident=${encodeURIComponent(p.id)}&place=${encodeURIComponent(w.id)}`,
+      now,
+    );
+    if (d) out.push(d);
   }
   return out;
 }
