@@ -19,6 +19,10 @@ import { LiveWind } from "./sources/wind.js";
 import { HazardLayer } from "./realtime/hazards.js";
 import { SourceHealthBoard } from "./realtime/health.js";
 import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
+import { MemoryAccountStore } from "./accounts/memory.js";
+import { PostgresAccountStore } from "./accounts/postgres.js";
+import { AlertEngine } from "./notify/engine.js";
+import { PushOutbox, webPushSender, type PushSender } from "./notify/outbox.js";
 import type { Store } from "./store/types.js";
 
 const log = pino({
@@ -113,6 +117,24 @@ async function main(): Promise<void> {
     hazards,
   });
 
+  const accounts = store instanceof PostgresStore ? new PostgresAccountStore(store.db) : new MemoryAccountStore();
+  if (accounts.kind === "memory") log.warn("accounts are in memory: sign-ups and places are lost on restart");
+  let sender: PushSender | null = null;
+  if (config.push.publicKey && config.push.privateKey) {
+    sender = await webPushSender(config.push);
+  } else {
+    log.warn("no VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY: alerts are recorded but not pushed");
+  }
+  const outbox = sender ? new PushOutbox({ accounts, sender, log }) : null;
+  const alerts = new AlertEngine({
+    accounts,
+    log,
+    incidents: () => engine.allIncidents(),
+    hazards: () => hazards.active(),
+    onQueued: () => void outbox?.flush(),
+  });
+  await alerts.reload();
+
   const pipeline = new Pipeline({
     store,
     engine,
@@ -126,6 +148,7 @@ async function main(): Promise<void> {
     hazards,
     health,
     wind,
+    alerts,
     simulation,
     log,
   });
@@ -154,12 +177,16 @@ async function main(): Promise<void> {
     spread,
     hazards,
     health,
+    accounts,
+    alerts,
+    sender,
     log,
     startedAt,
   });
 
   await app.listen({ port: config.port, host: config.host });
   pipeline.start();
+  outbox?.start();
   hub.start();
   const heartbeat = hub.heartbeat();
 
@@ -181,6 +208,7 @@ async function main(): Promise<void> {
     log.info({ signal }, "shutting down");
     clearInterval(heartbeat);
     hub.stop();
+    outbox?.stop();
     await pipeline.stop();
     await app.close().catch(() => undefined);
     await cache.close().catch(() => undefined);

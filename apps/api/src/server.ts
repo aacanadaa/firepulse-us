@@ -11,6 +11,10 @@ import type { RealtimeHub } from "./realtime/hub.js";
 import type { HotspotLog } from "./realtime/hotspots.js";
 import type { HazardLayer } from "./realtime/hazards.js";
 import { Geocoder } from "./geocode.js";
+import { registerAccountRoutes } from "./accounts/routes.js";
+import type { AccountStore } from "./accounts/types.js";
+import type { AlertEngine } from "./notify/engine.js";
+import type { PushSender } from "./notify/outbox.js";
 import { NEARBY_MAX_RADIUS_KM, nearbySummary } from "./nearby.js";
 import type { SourceHealthBoard } from "./realtime/health.js";
 import type { Pipeline } from "./pipeline.js";
@@ -30,6 +34,9 @@ export interface ServerDeps {
   spread: SpreadRuntime;
   hazards: HazardLayer;
   health: SourceHealthBoard;
+  accounts: AccountStore;
+  alerts: AlertEngine;
+  sender: PushSender | null;
   log: Logger;
   startedAt: number;
 }
@@ -77,7 +84,7 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
     disableRequestLogging: true,
   });
 
-  await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST"] });
+  await app.register(cors, { origin: config.corsOrigin, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
   await app.register(websocket, {
     options: {
       maxPayload: 256 * 1024,
@@ -432,6 +439,14 @@ export async function createServer(deps: ServerDeps): Promise<ReturnType<typeof 
   /* ------------------------------------------------------------------ */
   /* WebSocket                                                          */
   /* ------------------------------------------------------------------ */
+
+  await registerAccountRoutes(app, {
+    config,
+    accounts: deps.accounts,
+    alerts: deps.alerts,
+    sender: deps.sender,
+    log,
+  });
 
   app.get("/ws", { websocket: true }, (socket) => {
     hub.handle(socket);

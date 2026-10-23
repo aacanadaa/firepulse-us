@@ -370,6 +370,72 @@ export interface GeocodeResult {
 }
 
 /* ------------------------------------------------------------------ */
+/* Accounts and alerts                                                  */
+/* ------------------------------------------------------------------ */
+
+/** What a person can be alerted about, most urgent first. */
+export const ALERT_KINDS = ["evacuation", "fire_warning", "new_fire", "fire_closer", "fire_weather", "spread"] as const;
+export type AlertKind = (typeof ALERT_KINDS)[number];
+
+/** urgent ignores quiet hours; warning and info wait for them to end. */
+export type AlertSeverity = "urgent" | "warning" | "info";
+
+export interface AccountSettings {
+  alertKinds: AlertKind[];
+  /** Minutes after local midnight; both null means no quiet hours. */
+  quietStartMin: number | null;
+  quietEndMin: number | null;
+  /** IANA zone the quiet hours are in. */
+  timezone: string;
+}
+
+export interface AccountUser {
+  id: string;
+  username: string;
+  displayName?: string;
+  hasPassword: boolean;
+  google: boolean;
+  settings: AccountSettings;
+}
+
+export interface AccountPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radiusKm: number;
+}
+
+export interface AuthState {
+  user: AccountUser | null;
+  googleEnabled: boolean;
+  /** VAPID public key for this server's push subscriptions. */
+  pushPublicKey: string | null;
+}
+
+export interface AlertItem {
+  id: number;
+  kind: AlertKind;
+  severity: AlertSeverity;
+  title: string;
+  body: string;
+  url: string;
+  placeId: string;
+  createdAt: string;
+  status: "pending" | "sent" | "no_device" | "failed" | "suppressed" | "baseline";
+}
+
+/** The JSON a push message carries to the service worker. */
+export interface PushPayload {
+  title: string;
+  body: string;
+  url: string;
+  /** Replaces an earlier notification with the same tag. */
+  tag: string;
+  severity: AlertSeverity;
+}
+
+/* ------------------------------------------------------------------ */
 /* Wind field                                                          */
 /* ------------------------------------------------------------------ */
 

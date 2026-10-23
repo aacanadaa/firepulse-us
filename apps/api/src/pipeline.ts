@@ -10,6 +10,8 @@ import type { SourceHealthBoard } from "./realtime/health.js";
 import type { HazardAdapter, OfficialAdapter, SourceAdapter } from "./sources/types.js";
 import { hazardContextSignals } from "./sources/nws.js";
 import type { LiveWind } from "./sources/wind.js";
+import type { AlertEngine } from "./notify/engine.js";
+import type { HazardAlertFeature, IncidentFeature } from "@firepulse/protocol";
 import type { FireSimulation } from "./simulation/generator.js";
 import { cellOf } from "./h3.js";
 import type { Logger } from "pino";
@@ -58,6 +60,8 @@ export class Pipeline {
       hazards: HazardLayer;
       health: SourceHealthBoard;
       wind: LiveWind | null;
+      /** Turns fire and warning changes into household alerts. */
+      alerts?: AlertEngine | null;
       simulation: FireSimulation | null;
       log: Logger;
     },
@@ -270,6 +274,7 @@ export class Pipeline {
     try {
       const result = await this.deps.engine.run(now);
       this.deps.hub.publish(result.upserts, result.removes);
+      this.alertOn(result.upserts, []);
     } catch (err) {
       this.deps.log.error({ err }, "fusion pass failed");
     }
@@ -319,6 +324,7 @@ export class Pipeline {
         delta.removes.push(...(await this.deps.engine.retireOfficial(present, batch.complete.idPrefix)));
       }
       if (delta.upserts.length > 0 || delta.removes.length > 0) this.deps.hub.publish(delta.upserts, delta.removes);
+      this.alertOn(delta.upserts, []);
       // Estimates fold into new perimeters on the next pass.
       this.requestFusion();
       this.deps.log.info(
@@ -329,6 +335,16 @@ export class Pipeline {
       this.deps.health.failure(adapter.id, now, err);
       this.deps.log.warn({ err, adapter: adapter.id }, "official poll failed");
     }
+  }
+
+  /** Alerts never hold up ingestion; failures are logged and retried next change. */
+  private alertOn(incidents: IncidentFeature[], hazards: HazardAlertFeature[]): void {
+    const alerts = this.deps.alerts;
+    if (!alerts || (incidents.length === 0 && hazards.length === 0)) return;
+    void (async () => {
+      if (incidents.length > 0) await alerts.onIncidents(incidents);
+      if (hazards.length > 0) await alerts.onHazards(hazards);
+    })().catch((err) => this.deps.log.warn({ err }, "alert evaluation failed"));
   }
 
   private async refreshWind(wind: LiveWind): Promise<void> {
@@ -357,6 +373,7 @@ export class Pipeline {
       if (warnings.length > 0) this.deps.log.warn({ adapter: adapter.id, warnings }, "hazard poll incomplete");
       const { upserts, removes } = this.deps.hazards.replace(alerts);
       this.deps.hub.publishHazards(upserts, removes);
+      this.alertOn([], upserts);
       if (upserts.length > 0 || removes.length > 0) {
         this.deps.log.info({ active: alerts.length, new: upserts.length, ended: removes.length }, "hazard alerts updated");
       }

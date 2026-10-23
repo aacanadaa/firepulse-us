@@ -71,6 +71,11 @@ export class PostgresStore implements Store {
    * transaction. A database set up by hand or by the Docker init folder
    * before this table existed already has 001.
    */
+  /** Shared with the account store, so both use one connection pool. */
+  get db(): pg.Pool {
+    return this.pool;
+  }
+
   async migrate(dir = MIGRATIONS_DIR): Promise<string[]> {
     const files = readdirSync(dir)
       .filter((f) => /^\d+_.+\.sql$/.test(f))

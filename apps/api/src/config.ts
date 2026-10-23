@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { EVIDENCE_WINDOW_MAX_MIN, type PublicConfig } from "@firepulse/protocol";
 
@@ -25,6 +26,14 @@ const userAgent =
   process.env.FIREPULSE_USER_AGENT ||
   process.env.SPREAD_USER_AGENT ||
   "FirePulse/1.0 (wildfire tracker; set FIREPULSE_USER_AGENT with a contact)";
+
+const webOrigin = (process.env.WEB_ORIGIN || "http://localhost:3000").replace(/\/$/, "");
+
+function vapidSubject(raw: string | undefined): string {
+  const v = (raw ?? "").trim();
+  if (!v) return "mailto:admin@localhost";
+  return /^(mailto:|https:)/.test(v) ? v : `mailto:${v}`;
+}
 
 const dataMode: DataMode =
   requestedMode && ["simulation", "live", "hybrid"].includes(requestedMode)
@@ -113,6 +122,34 @@ export const config = {
     openMeteoPerMinute: 300,
     httpTimeoutMs: 15_000,
     userAgent,
+  },
+
+  /** Where the web app lives; sign-in redirects and cookies follow it. */
+  webOrigin,
+
+  auth: {
+    google:
+      process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+        ? {
+            clientId: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            // Must match an Authorized redirect URI in the Google client.
+            redirectUri:
+              process.env.GOOGLE_REDIRECT_URI ||
+              `${process.env.PUBLIC_API_URL || "http://localhost:8790"}/api/v1/auth/google/callback`,
+          }
+        : null,
+    /** Signs the short-lived sign-in state cookie; set it when running several API instances. */
+    secret: process.env.SESSION_SECRET || randomBytes(32).toString("hex"),
+    /** Secure cookies whenever the site is served over HTTPS. */
+    secureCookies: webOrigin.startsWith("https://"),
+  },
+
+  push: {
+    publicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+    privateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+    /** Push services contact this address about problems; it must be mailto: or https:. */
+    subject: vapidSubject(process.env.VAPID_SUBJECT),
   },
 
   /** Static heat sources (refineries, flares) that fusion ignores. */

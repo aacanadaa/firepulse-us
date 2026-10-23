@@ -8,6 +8,7 @@ import pg from "pg";
 import pino from "pino";
 import { circleRing, type IncidentFeature, type RawSignal } from "@firepulse/protocol";
 import { PostgresStore } from "../src/store/postgres.js";
+import { PostgresAccountStore } from "../src/accounts/postgres.js";
 import { FusionEngine } from "../src/fusion/engine.js";
 import type { AppConfig } from "../src/config.js";
 
@@ -93,6 +94,56 @@ describe.skipIf(!url)("Postgres store", () => {
     expect(merges[0]).toMatchObject({ estimateId: estimate.id, officialId: official.id });
 
     await engine.retireOfficial(new Set(), "wfigs-");
+    await store.close();
+  });
+
+  it("stores accounts, places, subscriptions and deduped alerts", async () => {
+    const store = new PostgresStore(url!);
+    await store.init();
+    const accounts = new PostgresAccountStore(store.db);
+    const user = await accounts.createUser({ username: `pg${Date.now() % 100000}`, passwordHash: "scrypt$x" });
+    await expect(accounts.createUser({ username: user.username.toUpperCase().toLowerCase(), passwordHash: null })).rejects.toThrow(
+      /taken/,
+    );
+    expect((await accounts.userByUsername(user.username.toUpperCase()))?.id).toBe(user.id);
+
+    await accounts.createSession("hash-1", user.id, new Date(Date.now() + 60_000).toISOString(), "test");
+    expect((await accounts.sessionUser("hash-1", Date.now(), new Date(Date.now() + 120_000).toISOString()))?.id).toBe(user.id);
+    expect(await accounts.sessionUser("hash-1", Date.now() + 600_000, new Date().toISOString())).toBeNull();
+
+    const place = await accounts.createPlace(user.id, { name: "Home", lat: 39.76, lon: -121.62, radiusKm: 25 });
+    expect(place).toMatchObject({ lat: 39.76, lon: -121.62, radiusKm: 25 });
+    const updated = await accounts.updateSettings(user.id, { quietStartMin: 1320, quietEndMin: 420, timezone: "America/Denver" });
+    expect(updated).toMatchObject({ quietStartMin: 1320, quietEndMin: 420, timezone: "America/Denver" });
+    const watchers = await accounts.watchers();
+    expect(watchers.find((w) => w.id === place.id)?.settings.timezone).toBe("America/Denver");
+
+    await accounts.saveSubscription(user.id, { endpoint: "https://push.example/a", p256dh: "k", auth: "a", userAgent: null });
+    await accounts.saveSubscription(user.id, { endpoint: "https://push.example/a", p256dh: "k2", auth: "a2", userAgent: null });
+    expect(await accounts.subscriptions(user.id)).toHaveLength(1);
+
+    const draft = {
+      userId: user.id,
+      placeId: place.id,
+      kind: "new_fire" as const,
+      subjectId: "fire-1",
+      revision: "official",
+      severity: "info" as const,
+      title: "t",
+      body: "b",
+      url: "/",
+    };
+    expect(await accounts.insertAlerts([draft, { ...draft, subjectId: "fire-2", severity: "urgent" }])).toHaveLength(2);
+    expect(await accounts.insertAlerts([draft])).toHaveLength(0);
+    const due = await accounts.dueAlerts(new Date(Date.now() + 1000).toISOString(), 10);
+    expect(due.map((a) => a.subjectId)).toEqual(["fire-2", "fire-1"]);
+    await accounts.markAlert(due[0]!.id, { status: "sent" });
+    await accounts.markAlert(due[1]!.id, { status: "pending", error: "503", retryAt: new Date(Date.now() + 3_600_000).toISOString() });
+    expect(await accounts.sentCountSince(user.id, new Date(Date.now() - 60_000).toISOString())).toBe(1);
+    expect(await accounts.dueAlerts(new Date(Date.now() + 1000).toISOString(), 10)).toHaveLength(0);
+
+    await accounts.deleteUser(user.id);
+    expect(await accounts.places(user.id)).toHaveLength(0);
     await store.close();
   });
 });
