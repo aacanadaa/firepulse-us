@@ -33,6 +33,7 @@ const LAYER_LABELS: { key: keyof LayerFlags; label: string; note: string }[] = [
   { key: "estimated", label: "Early estimates", note: "Fused active fire zones" },
   { key: "thermal", label: "Thermal detections", note: "GOES, VIIRS, MODIS" },
   { key: "spread", label: "Spread forecast", note: "Selected fire, next day · experimental" },
+  { key: "alerts", label: "Warnings and alerts", note: "NWS evacuation, fire weather, smoke" },
   { key: "wind", label: "Wind field", note: "Particle advection" },
   { key: "hex", label: "H3 cells", note: "Resolution 8 identity grid" },
   { key: "labels", label: "Place and fire labels", note: "States, cities, incidents" },
@@ -258,6 +259,20 @@ export default function AppHeader({
                       ))}
                     </span>
                     <span>Wind · direction and relative speed</span>
+                  </div>
+                  <div className="legend-row">
+                    <span
+                      className="legend-swatch"
+                      style={{ border: "1.5px solid var(--danger)", background: "rgba(185, 28, 28, 0.13)" }}
+                    />
+                    <span>Evacuation order or fire warning</span>
+                  </div>
+                  <div className="legend-row">
+                    <span
+                      className="legend-swatch"
+                      style={{ border: "1px dashed var(--warn)", background: "rgba(180, 83, 9, 0.06)" }}
+                    />
+                    <span>Red flag or fire weather · smoke in grey</span>
                   </div>
                 </div>
 

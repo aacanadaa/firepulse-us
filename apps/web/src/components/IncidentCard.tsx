@@ -1,7 +1,7 @@
 "use client";
 
 import type { IncidentFeature } from "@firepulse/protocol";
-import { formatAcres, formatAge, formatNumber } from "@/lib/format";
+import { formatAcres, formatAge, formatNumber, plainFireStatus } from "@/lib/format";
 import { isNew } from "@/lib/select";
 import { SourceLabel } from "./ui";
 
@@ -48,20 +48,22 @@ export default function IncidentCard({
       <div className="row-place">
         {place || "Location pending"}
         <span style={{ color: "var(--line-strong)" }}> · </span>
-        {p.cause ?? "unknown cause"}
-        <span style={{ color: "var(--line-strong)" }}> · </span>
-        {p.status}
+        {plainFireStatus(p, now)}
       </div>
 
       <div className="row-metrics">
         <span>{formatAcres(p.areaAcres)}</span>
-        <span className="sep">/</span>
-        <span className="metric-grow" title="Area change over the trailing window">
-          {growth >= 0 ? "+" : "−"}
-          {formatNumber(Math.abs(growth))} ac/h
-        </span>
-        <span className="sep">/</span>
-        <span>{p.hotspotCount} hot</span>
+        {early ? (
+          <>
+            <span className="sep">/</span>
+            <span className="metric-grow" title="Area change over the trailing window">
+              {growth >= 0 ? "+" : "−"}
+              {formatNumber(Math.abs(growth))} ac/h
+            </span>
+            <span className="sep">/</span>
+            <span>{p.hotspotCount} hot</span>
+          </>
+        ) : null}
       </div>
 
       <div className="row-bottom">

@@ -328,6 +328,9 @@ export interface NearbyFire {
   officialSince?: string;
   state?: string;
   county?: string;
+  /** The fire's centroid. */
+  lat: number;
+  lon: number;
 }
 
 /** Everything relevant to one point: nearby fires and alerts covering it. */

@@ -2,6 +2,7 @@
 
 import type {
   FeedStats,
+  HazardAlertFeature,
   HotspotFeature,
   IncidentFeature,
   PublicConfig,
@@ -66,6 +67,8 @@ export interface TimelineResponse {
 export class LiveStore {
   incidents = new Map<string, IncidentFeature>();
   hotspots = new Map<string, HotspotFeature>();
+  /** Active NWS alerts (evacuations, fire warnings, red flags, smoke). */
+  hazards = new Map<string, HazardAlertFeature>();
   wind: WindField | null = null;
   config: PublicConfig | null = null;
   stats: FeedStats | null = null;
@@ -110,6 +113,7 @@ export class LiveStore {
       this.serverSkewMs = Date.parse(msg.serverTime) - Date.now();
       for (const f of msg.incidents) this.incidents.set(f.id, f);
       for (const f of msg.hotspots) this.hotspots.set(f.id, f);
+      if (msg.hazards) for (const a of msg.hazards) this.hazards.set(a.id, a);
       if (msg.wind) this.wind = msg.wind;
       this.stats = msg.stats;
       this.hotspotSeq = this.stats.hotspots;
@@ -124,6 +128,8 @@ export class LiveStore {
       for (const id of msg.incidentsRemove) this.incidents.delete(id);
       for (const f of msg.hotspotsUpsert) this.hotspots.set(f.id, f);
       for (const id of msg.hotspotsRemove) this.hotspots.delete(id);
+      for (const a of msg.hazardsUpsert ?? []) this.hazards.set(a.id, a);
+      for (const id of msg.hazardsRemove ?? []) this.hazards.delete(id);
       if (msg.wind) this.wind = msg.wind;
       this.stats = msg.stats;
       if (this.hotspots.size > 40_000) this.prune(this.now());

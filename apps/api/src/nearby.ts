@@ -56,6 +56,8 @@ export function nearbySummary(
       officialSince: p.officialSince,
       state: p.state,
       county: p.county,
+      lat: p.lat,
+      lon: p.lon,
     });
   }
   fires.sort((a, b) => a.distanceKm - b.distanceKm);

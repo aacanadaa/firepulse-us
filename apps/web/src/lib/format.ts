@@ -1,4 +1,4 @@
-import type { SourceId } from "@firepulse/protocol";
+import type { HazardEvent, SourceId } from "@firepulse/protocol";
 import { SOURCE_PROFILES } from "@firepulse/protocol";
 
 export function formatAge(ms: number): string {
@@ -19,6 +19,45 @@ export function formatAgeShort(ms: number): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h`;
   return `${Math.floor(h / 24)}d`;
+}
+
+export type HazardTier = "act" | "weather" | "smoke";
+
+/** Evacuations and fire warnings mean act now; the rest is conditions. */
+export function hazardTier(event: HazardEvent): HazardTier {
+  if (event === "Evacuation Immediate" || event === "Fire Warning") return "act";
+  if (event === "Air Quality Alert" || event === "Dense Smoke Advisory") return "smoke";
+  return "weather";
+}
+
+/** Distances for people, not analysts: "800 m", "4.2 km", "35 km". */
+export function formatKm(km: number): string {
+  if (!Number.isFinite(km)) return "—";
+  if (km < 1) return `${Math.max(100, Math.round((km * 1000) / 100) * 100)} m`;
+  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
+}
+
+interface FireLike {
+  kind: "estimated" | "official";
+  cause?: string;
+  containment?: number;
+  firstDetectedAt: string;
+}
+
+/**
+ * One line a household can act on: what kind of fire this is and how sure
+ * anyone is. Estimates always say they are unconfirmed.
+ */
+export function plainFireStatus(p: FireLike, now: number): string {
+  if (p.cause === "prescribed") {
+    return p.containment != null ? `Planned burn (prescribed) · ${p.containment}% contained` : "Planned burn (prescribed)";
+  }
+  if (p.kind === "official") {
+    if (p.containment != null && p.containment >= 100) return "Official fire · contained";
+    return p.containment != null ? `Official fire · ${p.containment}% contained` : "Official fire · containment not reported";
+  }
+  const age = formatAgeShort(now - Date.parse(p.firstDetectedAt));
+  return `Possible fire · detected ${age} ago · not confirmed by fire agencies`;
 }
 
 /** A duration in minutes, e.g. "45 min" or "30 h". */

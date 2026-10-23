@@ -2,8 +2,19 @@ import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from "@deck.gl/l
 import { H3HexagonLayer } from "@deck.gl/geo-layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import { gridDisk, latLngToCell } from "h3-js";
-import { SPREAD_BANDS, type HotspotFeature, type IncidentFeature, type SpreadCell, type SpreadForecast } from "@firepulse/protocol";
+import {
+  circleRing,
+  SPREAD_BANDS,
+  type HazardAlertFeature,
+  type HazardEvent,
+  type HotspotFeature,
+  type IncidentFeature,
+  type Ring,
+  type SpreadCell,
+  type SpreadForecast,
+} from "@firepulse/protocol";
 import { ageBucket } from "./select";
+import { hazardTier, type HazardTier } from "./format";
 import type { MapTheme, MapType } from "./places";
 
 /* ------------------------------------------------------------------ */
@@ -459,5 +470,127 @@ export function spreadLayers(
       getDashArray: [4, 4],
       extensions: [dashExtension],
     } as never),
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Hazard alerts (NWS)                                                  */
+/* ------------------------------------------------------------------ */
+
+
+/** Same hues as --danger / --warn; brighter on the dark plates. */
+function hazardColor(tier: HazardTier, mapType: MapType): string {
+  const dark = mapType === "ink" || mapType === "sat";
+  if (tier === "act") return dark ? "#f87171" : "#b91c1c";
+  if (tier === "weather") return dark ? "#f59e0b" : "#b45309";
+  return dark ? "#a3a3a3" : "#6b6b6b";
+}
+
+interface HazardOutline {
+  path: Ring;
+  tier: HazardTier;
+}
+
+interface HazardPolygon {
+  id: string;
+  event: HazardEvent;
+  tier: HazardTier;
+  rings: Ring[];
+}
+
+function hazardPolygons(alerts: HazardAlertFeature[]): HazardPolygon[] {
+  const out: HazardPolygon[] = [];
+  for (const a of alerts) {
+    const polygons = a.geometry.type === "Polygon" ? [a.geometry.coordinates] : a.geometry.coordinates;
+    polygons.forEach((rings, i) => out.push({ id: `${a.id}:${i}`, event: a.properties.event, tier: hazardTier(a.properties.event), rings }));
+  }
+  // Draw conditions first so evacuation areas sit on top.
+  const order: Record<HazardTier, number> = { smoke: 0, weather: 1, act: 2 };
+  return out.sort((x, y) => order[x.tier] - order[y.tier]);
+}
+
+export function hazardLayers(alerts: HazardAlertFeature[], visible: boolean, mapType: MapType) {
+  const data = visible ? hazardPolygons(alerts) : [];
+  return [
+    new PolygonLayer<HazardPolygon>({
+      id: "hazard-fill",
+      data,
+      pickable: false,
+      filled: true,
+      stroked: false,
+      getPolygon: (d) => d.rings,
+      getFillColor: (d) => rgba(hazardColor(d.tier, mapType), d.tier === "act" ? 34 : 14),
+      updateTriggers: { getFillColor: mapType },
+    }),
+    new PathLayer<HazardOutline>({
+      id: "hazard-outline",
+      data: data.flatMap((d) => d.rings.slice(0, 1).map((path) => ({ path, tier: d.tier }))),
+      pickable: false,
+      getPath: (d: HazardOutline) => d.path,
+      getColor: (d: HazardOutline) => rgba(hazardColor(d.tier, mapType), d.tier === "act" ? 230 : 170),
+      widthUnits: "pixels",
+      getWidth: (d: HazardOutline) => (d.tier === "act" ? 1.6 : 1),
+      // Conditions are dashed; areas told to act are solid.
+      getDashArray: (d: HazardOutline) => (d.tier === "act" ? [0, 0] : [5, 3]),
+      extensions: [dashExtension],
+      updateTriggers: { getColor: mapType },
+    } as never),
+  ];
+}
+
+/* ------------------------------------------------------------------ */
+/* Watched places                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface MapPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radiusKm: number;
+}
+
+export function placeLayers(places: MapPlace[], theme: MapTheme) {
+  return [
+    new PathLayer<{ path: Ring }>({
+      id: "place-radius",
+      data: places.map((p) => ({ path: circleRing(p, p.radiusKm, 72) })),
+      pickable: false,
+      getPath: (d: { path: Ring }) => d.path,
+      getColor: rgba(theme.labelText, 150),
+      widthUnits: "pixels",
+      getWidth: 1,
+      getDashArray: [2, 3],
+      extensions: [dashExtension],
+    } as never),
+    new ScatterplotLayer<MapPlace>({
+      id: "place-marker",
+      data: places,
+      pickable: false,
+      getPosition: (p) => [p.lon, p.lat],
+      getRadius: 4.5,
+      radiusUnits: "pixels",
+      stroked: true,
+      getFillColor: rgba(theme.labelBg, 255),
+      getLineColor: rgba(theme.labelText, 255),
+      lineWidthUnits: "pixels",
+      getLineWidth: 1.5,
+    }),
+    new TextLayer<MapPlace>({
+      id: "place-label",
+      data: places,
+      pickable: false,
+      getPosition: (p) => [p.lon, p.lat],
+      getText: (p) => p.name,
+      getSize: 10,
+      getColor: rgba(theme.labelText, 255),
+      getPixelOffset: [0, -14],
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      fontWeight: 600,
+      characterSet: "auto",
+      outlineWidth: 1.2,
+      outlineColor: rgba(theme.labelOutline, 220),
+      fontSettings: { sdf: true, buffer: 6, radius: 4 },
+    }),
   ];
 }

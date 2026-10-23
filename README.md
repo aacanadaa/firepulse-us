@@ -39,6 +39,16 @@ from the merge ledger: `official_since − first_detected_at`.
   estimates. Official perimeters are solid, forest-green and hatched; early
   zones are dashed orange with a north-edge label. Thermal detections fade from
   ember to stone over 24 hours and scale with Fire Radiative Power.
+- **Near you.** Watch up to five places (search an address or town, or use
+  your location). For each, FirePulse lists fires within 10, 25 or 50 km,
+  measured to the fire's mapped edge and labelled with direction, alongside
+  any evacuation order, fire warning, red flag or smoke alert covering it.
+  Every fire gets a plain-language status ("Official fire · 35% contained",
+  "Possible fire · not confirmed by fire agencies", "Planned burn") and links
+  to the official sources. Places are kept in the browser.
+- **Warnings on the map.** NWS alert areas are drawn under the fire data: solid
+  red for evacuations and fire warnings, dashed amber for fire weather, grey
+  for smoke and air quality.
 - **Live incident feed.** Sorted by fastest-growing / newly-detected /
   confidence, with source tags (`GOES-18`, `CAD`, `NIFC`, …), a confidence score
   and bar, area, growth rate, hotspot count and a second-level age.
@@ -325,7 +335,7 @@ firepulse/
 │   │   │   ├── spread/       next-day spread: ONNX model, static tiles, weather, summary
 │   │   │   ├── pipeline.ts   ingest → fuse → publish orchestration
 │   │   │   └── server.ts     HTTP API + WS + webhooks + metrics
-│   │   └── test/             101 tests: model, parsers, DBSCAN, merge, replay, spread, NWS, wind
+│   │   └── test/             108 tests: model, parsers, DBSCAN, merge, replay, spread, NWS, wind, nearby
 │   └── web/                  Next.js App Router client
 │       ├── src/components/   AppHeader, MapCanvas, Sidebar, DetailPanel, Timeline
 │       ├── src/lib/          places.ts (4 basemaps), layers.ts, store.ts, select.ts
@@ -384,6 +394,8 @@ than its `lastHotspotSeq` inside its viewport. See
 | GET | `/api/v1/incidents/:id/spread` | next-day spread forecast (202 while computing) |
 | GET | `/api/v1/hotspots?bbox=&from=&to=` | thermal window |
 | GET | `/api/v1/alerts?bbox=` | active NWS fire, evacuation and smoke alerts |
+| GET | `/api/v1/nearby?lat=&lon=&radiusKm=` | fires near a point and alerts covering it |
+| GET | `/api/v1/geocode?q=` | US place search (Census for addresses, Photon for names) |
 | GET | `/api/v1/timeline?hours=24` | histogram + official draws |
 | GET | `/api/v1/stats` | rates, latency, fusion config |
 | GET | `/api/v1/merges` | lead-time ledger |
@@ -399,7 +411,7 @@ than its `lastHotspotSeq` inside its viewport. See
 
 ```bash
 pnpm typecheck                  # protocol + API + web
-pnpm test                       # 101 tests
+pnpm test                       # 108 tests
 node scripts/shot.mjs           # headless screenshot + console/WebGL diagnostics
 node scripts/build-basemap.mjs  # PMTiles writer, validated by reading it back
 ```

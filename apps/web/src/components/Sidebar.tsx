@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { IncidentFeature, PublicConfig, SourceHealth } from "@firepulse/protocol";
 import type { KindFilter, FeedTab } from "@/lib/select";
 import type { FeedStatus } from "@/lib/store";
@@ -22,12 +23,20 @@ interface Props {
   ingestRate: number;
   config: PublicConfig | null;
   sources?: SourceHealth[];
+  /** "near": watched places and what's around them; "all": the national feed. */
+  mode: SidebarMode;
+  onMode: (mode: SidebarMode) => void;
+  /** The near-you panel, rendered in place of the feed. */
+  nearby: ReactNode;
+  placeCount: number;
   onTab: (tab: FeedTab) => void;
   onKind: (kind: KindFilter) => void;
   onConfidence: (min: number) => void;
   onSelect: (id: string) => void;
   onClose: () => void;
 }
+
+export type SidebarMode = "near" | "all";
 
 const TABS: { id: FeedTab; label: string }[] = [
   { id: "growth", label: "Fastest growing" },
@@ -62,6 +71,10 @@ export default function Sidebar({
   ingestRate,
   config,
   sources,
+  mode,
+  onMode,
+  nearby,
+  placeCount,
   onTab,
   onKind,
   onConfidence,
@@ -72,17 +85,36 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar" aria-label="Live incident feed">
-      <div className="sb-head">
+      <div className="sb-head" style={mode === "near" ? { paddingBottom: 12 } : undefined}>
+        <div className="sb-mode" role="tablist" aria-label="Sidebar view">
+          {(
+            [
+              ["near", "Near you"],
+              ["all", "All fires"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={mode === id}
+              className={mode === id ? "active" : ""}
+              onClick={() => onMode(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="sb-title-row">
           <div>
-            <div className="kicker">National feed</div>
+            <div className="kicker">{mode === "near" ? "Watched places" : "National feed"}</div>
             <h2 className="h2" style={{ marginTop: 3 }}>
-              Incidents
+              {mode === "near" ? "Near you" : "Incidents"}
             </h2>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>
-              {incidents.length}/{total}
+              {mode === "near" ? `${placeCount}/5` : `${incidents.length}/${total}`}
             </span>
             <button
               type="button"
@@ -97,82 +129,90 @@ export default function Sidebar({
           </div>
         </div>
 
-        <div className="sb-tabs" role="tablist" aria-label="Feed ordering">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === t.id}
-              className={`tab ${tab === t.id ? "active" : ""}`}
-              onClick={() => onTab(t.id)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {mode === "all" ? (
+          <>
+            <div className="sb-tabs" role="tablist" aria-label="Feed ordering">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  className={`tab ${tab === t.id ? "active" : ""}`}
+                  onClick={() => onTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
 
-        <div className="sb-filters">
-          {KINDS.map((k) => (
-            <button
-              key={k.id}
-              type="button"
-              className={`chip ${kind === k.id ? "active" : ""}`}
-              onClick={() => onKind(k.id)}
-              aria-pressed={kind === k.id}
-            >
-              {k.label}
-            </button>
-          ))}
-          <span className="divider" aria-hidden="true" />
-          <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 8, letterSpacing: "0.08em" }}>
-            Min
-          </label>
-          <select
-            id="confidence-filter"
-            className="select"
-            value={minConfidence}
-            onChange={(e) => onConfidence(Number(e.target.value))}
-          >
-            {CONFIDENCE.map((c) => (
-              <option key={c.v} value={c.v}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
+            <div className="sb-filters">
+              {KINDS.map((k) => (
+                <button
+                  key={k.id}
+                  type="button"
+                  className={`chip ${kind === k.id ? "active" : ""}`}
+                  onClick={() => onKind(k.id)}
+                  aria-pressed={kind === k.id}
+                >
+                  {k.label}
+                </button>
+              ))}
+              <span className="divider" aria-hidden="true" />
+              <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 8, letterSpacing: "0.08em" }}>
+                Min
+              </label>
+              <select
+                id="confidence-filter"
+                className="select"
+                value={minConfidence}
+                onChange={(e) => onConfidence(Number(e.target.value))}
+              >
+                {CONFIDENCE.map((c) => (
+                  <option key={c.v} value={c.v}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {cursor != null ? (
-          <div className="replay-banner">
-            <Icon name="clock" size={11} />
-            <span>Replay — showing what was known at this moment</span>
-          </div>
+            {cursor != null ? (
+              <div className="replay-banner">
+                <Icon name="clock" size={11} />
+                <span>Replay — showing what was known at this moment</span>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
 
-      <div className="feed thin" role="list">
-        {incidents.length === 0 ? (
-          <div className="empty">
-            <h4>Nothing matches this view</h4>
-            <p>
-              {cursor != null
-                ? "The fusion engine had not detected a fire at this point in the replay."
-                : "Lower the confidence filter or pan the map to another region."}
-            </p>
-          </div>
-        ) : (
-          incidents.map((incident) => (
-            <div key={incident.id} role="listitem">
-              <IncidentCard
-                incident={incident}
-                selected={selectedId === incident.id}
-                now={now}
-                onSelect={onSelect}
-              />
+      {mode === "near" ? (
+        nearby
+      ) : (
+        <div className="feed thin" role="list">
+          {incidents.length === 0 ? (
+            <div className="empty">
+              <h4>Nothing matches this view</h4>
+              <p>
+                {cursor != null
+                  ? "The fusion engine had not detected a fire at this point in the replay."
+                  : "Lower the confidence filter or pan the map to another region."}
+              </p>
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            incidents.map((incident) => (
+              <div key={incident.id} role="listitem">
+                <IncidentCard
+                  incident={incident}
+                  selected={selectedId === incident.id}
+                  now={now}
+                  onSelect={onSelect}
+                />
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       <footer className="sb-foot">
         <span>
