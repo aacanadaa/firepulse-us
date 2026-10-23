@@ -26,6 +26,8 @@ import type { Logger } from "pino";
 const DETECTION_KINDS = new Set<RawSignal["kind"]>(["thermal", "dispatch", "camera", "crowd"]);
 const CONTEXT_KINDS = new Set<RawSignal["kind"]>(["airquality", "weather"]);
 const GROWTH_REF_MS = 10 * 60_000;
+/** Farthest an official fire can be from a cluster and still cover it (name match). */
+const OFFICIAL_REACH_KM = 12;
 const MAX_HISTORY = 288;
 const MAX_CELLS = 220;
 
@@ -160,6 +162,10 @@ export class FusionEngine {
     const officialFeatures = [...this.tracks.values()]
       .map((t) => t.feature)
       .filter((f) => f.properties.kind === "official");
+    // Every "already covered" rule below needs the cluster within 12 km of
+    // the official fire; boxes padded by that much rule most pairs out
+    // before any polygon test.
+    const officialBoxes = officialFeatures.map((o) => padBBoxKm(featureBBox(o), OFFICIAL_REACH_KM));
 
     const detections = signals.filter((s) => DETECTION_KINDS.has(s.kind));
     const context = signals.filter((s) => CONTEXT_KINDS.has(s.kind));
@@ -183,7 +189,9 @@ export class FusionEngine {
 
       const c = centroid(members);
       const clusterName = nameFor(members, c);
-      const insideOfficial = officialFeatures.find((o) => {
+      const clusterBox = bboxOfPoints(members);
+      const insideOfficial = officialFeatures.find((o, i) => {
+        if (!bboxesIntersect(clusterBox, officialBoxes[i]!)) return false;
         const rings = outerRings(o);
         if (pointInRings(c, rings)) return true;
         // An official polygon's own detections must never seed a "new" zone,
@@ -191,7 +199,7 @@ export class FusionEngine {
         if (members.some((m) => pointInRings(m, rings))) return true;
         const distanceKm = haversineKm(c, { lon: o.properties.lon, lat: o.properties.lat });
         if (
-          distanceKm < 12 &&
+          distanceKm < OFFICIAL_REACH_KM &&
           normalizeName(clusterName) === normalizeName(o.properties.name)
         ) {
           return true;
@@ -484,11 +492,14 @@ export class FusionEngine {
       const o = officialFeature.properties;
       const oRings = outerRings(officialFeature);
       const oCentroid = { lon: o.lon, lat: o.lat };
+      // A merge needs the estimate inside the perimeter or within matchKm.
+      const reach = padBBoxKm(featureBBox(officialFeature), this.cfg.fusion.matchKm);
 
       for (const [id, track] of this.tracks) {
         const e = track.feature.properties;
         if (e.kind !== "estimated" || e.mergedInto) continue;
         const eCentroid = { lon: e.lon, lat: e.lat };
+        if (!bboxesIntersect([e.lon, e.lat, e.lon, e.lat], reach)) continue;
         const distance = haversineKm(eCentroid, oCentroid);
         const inside = pointInRings(eCentroid, oRings);
         if (!inside && distance > this.cfg.fusion.matchKm) continue;
@@ -867,6 +878,32 @@ export function featureBBox(f: IncidentFeature): [number, number, number, number
   }
   if (!Number.isFinite(minLon)) return [f.properties.lon, f.properties.lat, f.properties.lon, f.properties.lat];
   return [minLon, minLat, maxLon, maxLat];
+}
+
+type BBox = [number, number, number, number];
+
+function bboxOfPoints(points: { lon: number; lat: number }[]): BBox {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const p of points) {
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+  }
+  return [minLon, minLat, maxLon, maxLat];
+}
+
+function padBBoxKm(b: BBox, km: number): BBox {
+  const dLat = km / 110.574;
+  const dLon = km / (111.32 * Math.max(0.05, Math.cos((((b[1] + b[3]) / 2) * Math.PI) / 180)));
+  return [b[0] - dLon, b[1] - dLat, b[2] + dLon, b[3] + dLat];
+}
+
+function bboxesIntersect(a: BBox, b: BBox): boolean {
+  return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
 }
 
 export function featureIntersectsBBox(f: IncidentFeature, bbox: [number, number, number, number]): boolean {

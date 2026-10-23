@@ -380,18 +380,23 @@ async function getJson(url: string, headers: Record<string, string> = {}, timeou
   return res.json();
 }
 
-/** FIRMS counts whole UTC days back from today; it accepts 1 to 5. */
+/**
+ * FIRMS counts whole UTC calendar dates back from today, today included, and
+ * accepts 1 to 5. Just after 00:00 UTC "today" is still empty, so the range
+ * must cover every date the window touches, not its length in days.
+ */
 export function firmsDayRange(now: number, since: number, minDays = 1): number {
-  const days = Math.ceil((now - since) / 86_400_000);
-  return Math.max(minDays, Math.min(5, Number.isFinite(days) ? days : 1));
+  const DAY = 86_400_000;
+  const dates = Math.floor(now / DAY) - Math.floor(since / DAY) + 1;
+  return Math.max(minDays, Math.min(5, Number.isFinite(dates) ? dates : 1));
 }
 
 export function createFirmsAdapters(): SourceAdapter[] {
   const key = process.env.FIRMS_MAP_KEY;
   if (!key) return [];
   const [west, south, east, north] = (process.env.FIRMS_BBOX ?? "-126,23,-66,50").split(",");
-  // Two days so a poll just after 00:00 UTC still covers the previous
-  // evening's passes; dedupe absorbs the overlap.
+  // At least two dates: a poll just after 00:00 UTC must still see the
+  // previous evening's passes. Dedupe absorbs the overlap.
   const minDays = Number(process.env.FIRMS_DAYS ?? 2) || 2;
   const bbox = `${west},${south},${east},${north}`;
 

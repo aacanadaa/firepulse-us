@@ -124,12 +124,17 @@ US,35.0,-111.7,305.0,1,1,2026-10-19,0235,Terra,MODIS,80,6.1,290,50.0,N`;
     expect(signals[0]!.meta?.product).toBe("VIIRS_NOAA21_NRT");
   });
 
-  it("asks FIRMS for enough whole days to cover the poll window", () => {
-    const now = Date.parse("2026-10-20T12:00:00Z");
-    expect(firmsDayRange(now, now - 10 * 60_000)).toBe(1);
-    expect(firmsDayRange(now, now - 10 * 60_000, 2)).toBe(2);
-    expect(firmsDayRange(now, now - 30 * 3_600_000)).toBe(2);
-    expect(firmsDayRange(now, 0)).toBe(5);
+  it("asks FIRMS for every UTC date the poll window touches", () => {
+    const noon = Date.parse("2026-10-20T12:00:00Z");
+    expect(firmsDayRange(noon, noon - 10 * 60_000)).toBe(1);
+    expect(firmsDayRange(noon, noon - 10 * 60_000, 2)).toBe(2);
+    expect(firmsDayRange(noon, noon - 30 * 3_600_000)).toBe(2);
+    // Recorded 2026-10-23T02:08Z: days=2 returned only 2026-10-22, because
+    // "today" had no detections yet. A 30 h backfill needs three dates.
+    const pastMidnight = Date.parse("2026-10-23T02:08:00Z");
+    expect(firmsDayRange(pastMidnight, pastMidnight - 30 * 3_600_000)).toBe(3);
+    expect(firmsDayRange(pastMidnight, pastMidnight - 10 * 60_000)).toBe(1);
+    expect(firmsDayRange(noon, 0)).toBe(5);
   });
 
   it("returns nothing for an empty product", () => {
