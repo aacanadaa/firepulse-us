@@ -24,6 +24,7 @@ import { cellOf, cellsOf, neighborhood } from "../h3.js";
 import type { AppConfig } from "../config.js";
 import type { Logger } from "pino";
 import { HeatMask } from "./heatMask.js";
+import { isGenericName, whereName, type PlaceNamer } from "./placeNames.js";
 
 const DETECTION_KINDS = new Set<RawSignal["kind"]>(["thermal", "dispatch", "camera", "crowd"]);
 const CONTEXT_KINDS = new Set<RawSignal["kind"]>(["airquality", "weather"]);
@@ -94,6 +95,7 @@ export class FusionEngine {
     private readonly log: Logger,
     private readonly cache?: RedisCache,
     private readonly heatMask: HeatMask = HeatMask.empty(),
+    private readonly namer?: PlaceNamer,
   ) {}
 
   async hydrate(now = Date.now()): Promise<void> {
@@ -106,7 +108,11 @@ export class FusionEngine {
         firstSeen: Date.parse(p.firstDetectedAt),
         // "Last seen by fusion", not last evidence: satellite evidence is
         // often hours old, and the next pass must still match this track.
-        lastSignalAt: now,
+        // Tracks whose evidence is older than any window expire right away.
+        lastSignalAt:
+          Date.parse(p.updatedAt) >= now - EVIDENCE_WINDOW_MAX_MIN * 60_000 || p.kind === "official"
+            ? now
+            : Date.parse(p.updatedAt),
         peakConfidence: p.confidence,
         memberIds: new Set(),
         history: [
@@ -193,7 +199,7 @@ export class FusionEngine {
       const attached = attachContext(cluster.centroid, context, this.cfg.fusion.radiusKm * 2);
       if (!isPublishable(members, attached, this.cfg)) continue;
       // Satellite-only heat on a refinery or gas flare is not a fire.
-      if (isThermalOnly(members) && this.heatMask.coversAll(members)) continue;
+      if (isThermalOnly(members) && this.heatMask.coversMost(members)) continue;
 
       const c = centroid(members);
       const clusterName = nameFor(members, c);
@@ -267,7 +273,14 @@ export class FusionEngine {
       const nextHistory = [...history, sample].slice(-MAX_HISTORY);
       const growth = growthRates(nextHistory, now);
 
-      const name = track?.feature.properties.name ?? nameFor(members, c);
+      const confirmation = estimateConfirmation(members, track?.feature.properties.confirmation);
+      const where = this.namer?.describe(c);
+      const previous = track?.feature.properties.name;
+      // Keep a real name (dispatch, simulator); replace ones the engine made up.
+      const name =
+        previous && !isGenericName(previous)
+          ? previous
+          : ((where && whereName(where, confirmation !== "single")) ?? previous ?? nameFor(members, c));
       const props: IncidentProperties = {
         id: track?.feature.id ?? crypto.randomUUID(),
         kind: "estimated",
@@ -287,10 +300,10 @@ export class FusionEngine {
         growthScore: growthScore(growth, fused.breakdown.score, members),
         hotspotCount: members.filter((m) => m.kind === "thermal").length,
         evidence: fused.contributions,
-        confirmation: estimateConfirmation(members, track?.feature.properties.confirmation),
+        confirmation,
         cause: causeFor(members),
-        county: stringMeta(members, "county"),
-        state: stringMeta(members, "state"),
+        county: stringMeta(members, "county") ?? where?.county,
+        state: stringMeta(members, "state") ?? where?.state,
         cells: cellList,
         lat: c.lat,
         lon: c.lon,
@@ -873,12 +886,13 @@ function nameFor(signals: RawSignal[], c: { lon: number; lat: number }): string 
     const named = s.meta?.incidentName;
     if (typeof named === "string" && named.length > 0) return named;
   }
+  // Satellite labels ("VIIRS 375m 4 MW") describe a pixel, not a fire.
   for (const s of signals) {
-    if (s.label && s.label.length > 2) return s.label;
+    if (s.kind !== "thermal" && s.label && s.label.length > 2) return s.label;
   }
   const ns = c.lat >= 0 ? "N" : "S";
   const ew = c.lon >= 0 ? "E" : "W";
-  return `Early Zone ${Math.abs(c.lat).toFixed(2)}${ns} ${Math.abs(c.lon).toFixed(2)}${ew}`;
+  return `Fire at ${Math.abs(c.lat).toFixed(2)}${ns} ${Math.abs(c.lon).toFixed(2)}${ew}`;
 }
 
 export function outerRings(f: IncidentFeature): Ring[] {
@@ -962,6 +976,7 @@ export function signatureOf(f: IncidentFeature): string {
   const ev = p.evidence.map((e) => `${e.source}:${e.count}`).join(",");
   return [
     p.kind,
+    p.name,
     p.status,
     p.confidence,
     Math.round(p.areaAcres),

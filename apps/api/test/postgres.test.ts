@@ -60,7 +60,8 @@ describe.skipIf(!url)("Postgres store", () => {
 
     const first = await engine.run(NOW);
     const estimate = first.upserts[0]!;
-    expect((await store.activeIncidents()).map((f) => f.id)).toContain(estimate.id);
+    const stored = (await store.activeIncidents()).find((f) => f.id === estimate.id);
+    expect(stored?.properties.confirmation).toBe("persistent");
 
     const ring = circleRing({ lon: -120.5, lat: 38.2 }, 2, 24);
     const official: IncidentFeature = {

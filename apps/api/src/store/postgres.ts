@@ -37,6 +37,7 @@ type IncidentRow = {
   cause: string | null;
   county: string | null;
   state: string | null;
+  confirmation: string | null;
   lon: number;
   lat: number;
   evidence: unknown;
@@ -243,6 +244,7 @@ export class PostgresStore implements Store {
         cause: p.cause ?? null,
         county: p.county ?? null,
         state: p.state ?? null,
+        confirmation: p.confirmation ?? null,
         active_from: p.officialSince ?? p.firstDetectedAt,
         active_to: p.kind === "estimated" && p.status === "merged" ? p.updatedAt : null,
         evidence: p.evidence,
@@ -258,7 +260,7 @@ export class PostgresStore implements Store {
             sources, h3_cells, area_sq_km, area_acres, frp, hotspot_count,
             growth_acres_hour, growth_frp_hour, growth_score, first_detected_at,
             last_signal_at, official_since, merged_into, is_active, agency,
-            external_id, containment, cause, county, state, active_from, active_to)
+            external_id, containment, cause, county, state, confirmation, active_from, active_to)
          select x.id, x.kind::firepulse.incident_kind, x.status::firepulse.incident_status,
                 x.name,
                 st_setsrid(st_geomfromgeojson(x.geom::text), 4326),
@@ -268,7 +270,7 @@ export class PostgresStore implements Store {
                 x.growth_acres_hour, x.growth_frp_hour, x.growth_score,
                 x.first_detected_at, x.last_signal_at, x.official_since,
                 x.merged_into, true, x.agency, x.external_id, x.containment,
-                x.cause, x.county, x.state, x.active_from, x.active_to
+                x.cause, x.county, x.state, x.confirmation, x.active_from, x.active_to
            from jsonb_to_recordset($1::jsonb) as x(
              id text, kind text, status text, name text, geom jsonb,
              lon double precision, lat double precision,
@@ -277,7 +279,7 @@ export class PostgresStore implements Store {
              hotspot_count integer, growth_acres_hour real, growth_frp_hour real,
              growth_score real, first_detected_at timestamptz, last_signal_at timestamptz,
              official_since timestamptz, merged_into text, agency text, external_id text,
-             containment smallint, cause text, county text, state text,
+             containment smallint, cause text, county text, state text, confirmation text,
              active_from timestamptz, active_to timestamptz, evidence jsonb)
          on conflict (id) do update set
            status = excluded.status,
@@ -302,6 +304,9 @@ export class PostgresStore implements Store {
            is_active = excluded.is_active,
            containment = excluded.containment,
            cause = excluded.cause,
+           county = coalesce(excluded.county, i.county),
+           state = coalesce(excluded.state, i.state),
+           confirmation = excluded.confirmation,
            active_to = excluded.active_to`,
         [JSON.stringify(rows)],
       );
@@ -557,6 +562,7 @@ function mapIncident(r: IncidentRow): IncidentFeature {
       cause: (r.cause as IncidentFeature["properties"]["cause"]) ?? undefined,
       county: r.county ?? undefined,
       state: r.state ?? undefined,
+      confirmation: (r.confirmation as IncidentFeature["properties"]["confirmation"]) ?? undefined,
       cells: r.h3_cells ?? [],
       lat: Number(r.lat),
       lon: Number(r.lon),

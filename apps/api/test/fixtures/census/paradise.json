@@ -1,0 +1,30 @@
+{
+ "result": {
+  "geographies": {
+   "States": [
+    {
+     "NAME": "California",
+     "BASENAME": "California",
+     "STUSAB": "CA",
+     "GEOID": "06"
+    }
+   ],
+   "Incorporated Places": [
+    {
+     "NAME": "Paradise town",
+     "BASENAME": "Paradise",
+     "STUSAB": null,
+     "GEOID": "0655520"
+    }
+   ],
+   "Counties": [
+    {
+     "NAME": "Butte County",
+     "BASENAME": "Butte",
+     "STUSAB": null,
+     "GEOID": "06007"
+    }
+   ]
+  }
+ }
+}

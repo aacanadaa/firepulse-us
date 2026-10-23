@@ -5,9 +5,9 @@
  *
  *   FIRMS_MAP_KEY=... pnpm --filter @firepulse/api heat-mask:build [YYYY-MM-DD]
  *
- * Reads one year of VIIRS S-NPP standard-processing detections for CONUS,
- * ending at the given date (default: the end of the archive), in 5-day
- * requests. A cell is masked when FIRMS itself classes repeated detections
+ * Reads one year of VIIRS S-NPP detections for CONUS ending at the given
+ * date (default: today), in 5-day requests: standard processing while it's
+ * available, near-real-time after that. A cell is masked when FIRMS itself classes repeated detections
  * there as a static land source or offshore, or when it has heat on 30+
  * distinct days spread over 4+ months (industrial sites burn year-round;
  * wildfires move on and crop burns are seasonal).
@@ -19,7 +19,10 @@ import { latLngToCell } from "h3-js";
 
 export const HEAT_MASK_RESOLUTION = 7;
 const BBOX = "-126,23,-66,50";
-const PRODUCT = "VIIRS_SNPP_SP";
+/** Standard processing (with FIRMS's static-source class) ends a few months back; NRT covers since. */
+const ARCHIVE = "VIIRS_SNPP_SP";
+const RECENT = "VIIRS_SNPP_NRT";
+const ARCHIVE_END = process.env.FIRMS_SP_END ?? "2026-06-30";
 const CHUNK_DAYS = 5;
 const MIN_STATIC_DETECTIONS = 2;
 const MIN_DAYS = 30;
@@ -71,13 +74,14 @@ export function maskedCells(cells: Map<string, CellStats>): string[] {
 async function main(): Promise<void> {
   const key = process.env.FIRMS_MAP_KEY;
   if (!key) throw new Error("FIRMS_MAP_KEY is required");
-  const end = new Date(`${process.argv[2] ?? "2026-06-30"}T00:00:00Z`);
+  const end = new Date(`${process.argv[2] ?? new Date().toISOString().slice(0, 10)}T00:00:00Z`);
   const start = new Date(end.getTime() - 365 * 86_400_000);
   const cells = new Map<string, CellStats>();
   let detections = 0;
   for (let t = start.getTime(); t <= end.getTime(); t += CHUNK_DAYS * 86_400_000) {
     const day = new Date(t).toISOString().slice(0, 10);
-    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${PRODUCT}/${BBOX}/${CHUNK_DAYS}/${day}`;
+    const product = day <= ARCHIVE_END ? ARCHIVE : RECENT;
+    const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${key}/${product}/${BBOX}/${CHUNK_DAYS}/${day}`;
     let csv = "";
     for (let attempt = 0; attempt < 4; attempt++) {
       const res = await fetch(url, { signal: AbortSignal.timeout(120_000) }).catch(() => null);
@@ -98,7 +102,7 @@ async function main(): Promise<void> {
     out,
     JSON.stringify({
       resolution: HEAT_MASK_RESOLUTION,
-      product: PRODUCT,
+      product: `${ARCHIVE} to ${ARCHIVE_END}, ${RECENT} after`,
       from: start.toISOString().slice(0, 10),
       to: end.toISOString().slice(0, 10),
       rule: `FIRMS type 2/3 on ${MIN_STATIC_DETECTIONS}+ detections, or heat on ${MIN_DAYS}+ days across ${MIN_MONTHS}+ months`,

@@ -79,6 +79,14 @@ describe("static heat-source mask", () => {
     expect((await engine.run(NOW)).upserts).toHaveLength(1);
   });
 
+  it("treats a cluster mostly on masked cells as a static source", () => {
+    const mask = new HeatMask(new Set([cell]), 7);
+    const at = (id: string, dLon: number) => viirs(id, 2, refinery.lon + dLon, refinery.lat);
+    // ~5 km east is outside the masked cell.
+    expect(mask.coversMost([at("a", 0), at("b", 0), at("c", 0), at("d", 0.06)])).toBe(true);
+    expect(mask.coversMost([at("a", 0), at("b", 0), at("c", 0.06), at("d", 0.06)])).toBe(false);
+  });
+
   it("builds the mask from FIRMS static classes and year-round heat", () => {
     const cells = new Map();
     const header = "latitude,longitude,acq_date,type";

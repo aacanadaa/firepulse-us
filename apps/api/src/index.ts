@@ -5,6 +5,7 @@ import { PostgresStore } from "./store/postgres.js";
 import { RedisCache } from "./store/redis.js";
 import { FusionEngine } from "./fusion/engine.js";
 import { HeatMask } from "./fusion/heatMask.js";
+import { PlaceNamer } from "./fusion/placeNames.js";
 import { HotspotLog } from "./realtime/hotspots.js";
 import { IngestMetrics } from "./realtime/metrics.js";
 import { RealtimeHub } from "./realtime/hub.js";
@@ -105,7 +106,9 @@ async function main(): Promise<void> {
   const heatMask = HeatMask.load(config.heatMaskPath);
   if (heatMask) log.info({ cells: heatMask.size }, "static heat-source mask loaded");
   else log.warn({ path: config.heatMaskPath }, "no static heat-source mask; refineries and flares may show as fires");
-  const engine = new FusionEngine(store, config, log, cache.available ? cache : undefined, heatMask ?? undefined);
+  // Live fires get human names ("Fire near Paradise, CA") from the Census.
+  const namer = config.dataMode === "simulation" ? undefined : new PlaceNamer({ userAgent: config.userAgent });
+  const engine = new FusionEngine(store, config, log, cache.available ? cache : undefined, heatMask ?? undefined, namer);
   const hotspots = new HotspotLog(config.ingest.hotspotRetentionHours * 3_600_000);
   const metrics = new IngestMetrics();
   const hazards = new HazardLayer();

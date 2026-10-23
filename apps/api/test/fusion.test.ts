@@ -356,4 +356,17 @@ describe("fusion engine", () => {
     expect(view).toHaveLength(5);
     expect(view[0]!.id).toBe("official-late");
   });
+
+  it("expires restored estimates whose evidence is older than any window", async () => {
+    const store = new MemoryStore();
+    const first = new FusionEngine(store, cfg, log);
+    await store.insertSignals([signal({ id: "old", source: "viirs", lon: -120, lat: 39, observedAt: iso(0) })]);
+    const id = (await first.run(NOW)).upserts[0]!.id;
+
+    // Two days later a restarted engine loads it from the store.
+    const later = NOW + 48 * 3_600_000;
+    const restarted = new FusionEngine(store, cfg, log);
+    await restarted.hydrate(later);
+    expect((await restarted.run(later)).removes).toContain(id);
+  });
 });

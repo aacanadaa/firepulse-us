@@ -31,9 +31,15 @@ export class HeatMask {
     return this.cells.has(latLngToCell(point.lat, point.lon, this.resolution));
   }
 
-  /** Every thermal member sits on a known static heat source. */
-  coversAll(members: RawSignal[]): boolean {
+  /**
+   * Most thermal members sit on a known static heat source. A refinery or
+   * steel works spans several cells and its edges are seen less often, so
+   * a few detections just outside the mask don't make it a fire.
+   */
+  coversMost(members: RawSignal[], share = 0.75): boolean {
     const thermal = members.filter((m) => m.kind === "thermal");
-    return thermal.length > 0 && thermal.every((m) => this.covers(m));
+    if (thermal.length === 0) return false;
+    const covered = thermal.filter((m) => this.covers(m)).length;
+    return covered / thermal.length >= share;
   }
 }
