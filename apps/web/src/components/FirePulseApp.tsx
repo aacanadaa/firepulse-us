@@ -265,19 +265,6 @@ export default function FirePulseApp() {
     [dataVersion, cursor],
   );
 
-  // "Does this fire still exist?" — one pass over the current data.
-  const liveness = useMemo(
-    () => buildLiveness(mapIncidents, hotspots, displayNow),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mapIncidents, hotspots],
-  );
-
-  const staleIds = useMemo(() => {
-    const out = new Set<string>();
-    for (const [id, l] of liveness) if (isStale(l.state)) out.add(id);
-    return out;
-  }, [liveness]);
-
   const counts = useMemo(() => {
     let early = 0;
     let official = 0;
@@ -306,6 +293,22 @@ export default function FirePulseApp() {
     : null;
 
   const displayNow = cursor ?? now;
+
+  // "Does this fire still exist?" — one pass over the current data. Time is
+  // bucketed to 5 minutes: the states only change on that scale, and a new
+  // `now` every clock tick would otherwise invalidate the map layer array.
+  const livenessBucket = Math.floor((cursor ?? now) / 300_000);
+  const liveness = useMemo(
+    () => buildLiveness(mapIncidents, hotspots, livenessBucket * 300_000),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapIncidents, hotspots, livenessBucket],
+  );
+
+  const staleIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, l] of liveness) if (isStale(l.state)) out.add(id);
+    return out;
+  }, [liveness]);
 
   useEffect(() => {
     if (!selectedId) return;
