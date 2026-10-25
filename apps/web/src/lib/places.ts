@@ -208,6 +208,7 @@ function vectorLayers(ink: boolean): unknown[] {
       // Built-up land: it is what makes a zoomed-in fire readable as "this is
       // next to people", and it is cheaper than a raster.
       id: "urban",
+      maxzoom: 8,
       type: "fill",
       source: BASEMAP_SOURCE,
       "source-layer": "urban",
@@ -216,6 +217,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "parks",
+      maxzoom: 8,
       type: "fill",
       source: BASEMAP_SOURCE,
       "source-layer": "parks",
@@ -224,6 +226,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "lakes",
+      maxzoom: 8,
       type: "fill",
       source: BASEMAP_SOURCE,
       "source-layer": "lakes",
@@ -231,6 +234,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "lake-outline",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "lakes",
@@ -238,6 +242,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "rivers",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "rivers",
@@ -248,6 +253,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "roads-minor",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "roads",
@@ -260,6 +266,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "roads-major",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "roads",
@@ -272,6 +279,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "countries",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "countries",
@@ -282,6 +290,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "states",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "states",
@@ -292,6 +301,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "coast",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "land",
@@ -299,6 +309,131 @@ function vectorLayers(ink: boolean): unknown[] {
         "line-color": ink ? "#3a3a3a" : "#c9c1b1",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.9, 9, 1.8],
       },
+    },
+
+    /* ---------------- high zoom: OpenStreetMap detail ----------------
+     * The shipped archive is 1:10m Natural Earth, which has no local roads
+     * and stops being useful past z7. From z8 up the map switches to OSM
+     * vector tiles (OpenFreeMap, no key), restyled into the same palette, so
+     * zooming into a fire shows streets, buildings and parks.
+     */
+    {
+      id: "osm-landuse",
+      type: "fill",
+      source: "osm",
+      "source-layer": "landuse",
+      minzoom: 10,
+      filter: ["match", ["get", "class"], ["residential", "commercial", "industrial", "retail"], true, false],
+      paint: { "fill-color": ink ? "#171717" : "#ece7db", "fill-opacity": 0.85 },
+    },
+    {
+      id: "osm-park",
+      type: "fill",
+      source: "osm",
+      "source-layer": "park",
+      minzoom: 10,
+      paint: { "fill-color": ink ? "#16211a" : "#e2ebdc", "fill-opacity": 0.9 },
+    },
+    {
+      id: "osm-water",
+      type: "fill",
+      source: "osm",
+      "source-layer": "water",
+      minzoom: 8,
+      paint: { "fill-color": ink ? "#0d1210" : "#e3e8e4" },
+    },
+    {
+      id: "osm-waterway",
+      type: "line",
+      source: "osm",
+      "source-layer": "waterway",
+      minzoom: 10,
+      paint: {
+        "line-color": ink ? "#1c2f29" : "#c6d3cf",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.4, 14, 1.6],
+      },
+    },
+    {
+      id: "osm-boundary",
+      type: "line",
+      source: "osm",
+      "source-layer": "boundary",
+      minzoom: 8,
+      filter: ["all", ["==", ["get", "admin_level"], 4], ["!=", ["get", "maritime"], 1]],
+      paint: {
+        "line-color": ink ? "#3a3a3a" : "#cbc2ae",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 14, 1.4],
+        "line-dasharray": [3, 2],
+      },
+    },
+    // Roads, thin to thick. Motorways first so junctions read correctly.
+    {
+      id: "osm-road-minor",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 13,
+      filter: ["match", ["get", "class"], ["minor", "service", "track"], true, false],
+      paint: {
+        "line-color": ink ? "#262626" : "#e0d8c6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.5, 16, 2.4],
+      },
+    },
+    {
+      id: "osm-road-tertiary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 11,
+      filter: ["match", ["get", "class"], ["tertiary"], true, false],
+      paint: {
+        "line-color": ink ? "#2e2e2e" : "#d6ccb6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 16, 3],
+      },
+    },
+    {
+      id: "osm-road-secondary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 10,
+      filter: ["match", ["get", "class"], ["secondary"], true, false],
+      paint: {
+        "line-color": ink ? "#3a3a3a" : "#cabfa6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.7, 16, 4],
+      },
+    },
+    {
+      id: "osm-road-primary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 9,
+      filter: ["match", ["get", "class"], ["primary"], true, false],
+      paint: {
+        "line-color": ink ? "#4a4a4a" : "#bdb093",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.9, 16, 5],
+      },
+    },
+    {
+      id: "osm-road-motorway",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 8,
+      filter: ["match", ["get", "class"], ["motorway", "trunk"], true, false],
+      paint: {
+        "line-color": ink ? "#5c5c5c" : "#b09f7c",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 16, 6],
+      },
+    },
+    {
+      id: "osm-building",
+      type: "fill",
+      source: "osm",
+      "source-layer": "building",
+      minzoom: 14,
+      paint: { "fill-color": ink ? "#1c1c1c" : "#e5ddcd", "fill-opacity": 0.85 },
     },
   ];
 }
@@ -356,6 +491,12 @@ export function styleFor(type: MapType): StyleSpecification {
     name: ink ? "FirePulse Ink" : "FirePulse Atlas",
     sources: {
       graticule: { type: "geojson", data: graticule() as never },
+      // Full-detail OSM tiles for the zoom range the archive cannot serve.
+      osm: {
+        type: "vector",
+        url: "https://tiles.openfreemap.org/planet",
+        attribution: "© OpenStreetMap contributors",
+      },
       [BASEMAP_SOURCE]: {
         type: "vector",
         tiles: [`${BASEMAP_URL}/{z}/{x}/{y}`],
