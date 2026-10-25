@@ -1,0 +1,94 @@
+# Render Blueprint — the always-on half of FirePulse.
+#
+# Why this exists: the web app is on Vercel, but the API cannot run there. It
+# holds WebSocket connections, keeps fusion state in memory and runs the feed
+# pollers and alert outbox on timers. That needs a long-lived process and a
+# PostGIS database, and neither may live on a laptop that gets closed.
+#
+# Deploy: Render → New + → Blueprint → pick this repository → Apply.
+# Values marked `sync: false` are NOT in the repository; Render prompts for
+# them on the first deploy (see docs/DEPLOY.md for what each one is).
+
+databases:
+  - name: firepulse-db
+    databaseName: firepulse
+    user: firepulse
+    postgresMajorVersion: "16"
+    # The free tier expires and sleeps; Starter keeps the API's data durable.
+    plan: basic-256mb
+    region: oregon
+
+services:
+  - type: web
+    name: firepulse-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    region: oregon
+    # Starter (not Free): free instances sleep after 15 minutes idle, which
+    # drops every WebSocket and makes the first visitor wait for a cold start.
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATA_MODE
+        value: live
+      # The API applies db/migrations itself on start; migration 001 creates PostGIS.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: firepulse-db
+          property: connectionString
+      - key: CORS_ORIGIN
+        value: https://firepulse-us.vercel.app
+      - key: WEB_ORIGIN
+        value: https://firepulse-us.vercel.app
+      - key: FIREPULSE_USER_AGENT
+        value: FirePulse/1.0 (saoriayers@saoria.makeup)
+      # One proxy hop (Render's edge) so rate limits see real client addresses.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: FIRMS_MAP_KEY
+        sync: false
+      - key: AIRNOW_API_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: INGEST_WEBHOOK_SECRET
+        sync: false
+      # Web Push: keep the existing pair. A new pair invalidates every
+      # browser subscription, because subscriptions are bound to the key.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://firepulse-us.vercel.app/api/v1/auth/google/callback
+
+  # Optional: the GOES-18/19 rapid-scan worker. It is a small Python process
+  # that posts detections to the API over the ingest webhook. Without it the map
+  # still works (FIRMS, WFIGS and NWS all feed the API directly); with it,
+  # sub-5-minute GOES heat is added. Uncomment after creating the service.
+  #
+  # - type: worker
+  #   name: firepulse-goes
+  #   runtime: docker
+  #   dockerfilePath: ./apps/goes-worker/Dockerfile
+  #   dockerContext: ./apps/goes-worker
+  #   region: oregon
+  #   plan: starter
+  #   envVars:
+  #     - key: FIREPULSE_API_URL
+  #       fromService:
+  #         type: web
+  #         name: firepulse-api
+  #         envVarKey: RENDER_EXTERNAL_URL
+  #     - key: INGEST_WEBHOOK_SECRET
+  #       sync: false
+  #     - key: FIREPULSE_USER_AGENT
+  #       value: FirePulse/1.0 (saoriayers@saoria.makeup)

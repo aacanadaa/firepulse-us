@@ -73,6 +73,22 @@ The build inlines `NEXT_PUBLIC_API_URL`. If the API's public URL changes, update
 the project's environment variable and redeploy (Vercel → Deployments →
 Redeploy, or push an empty commit): an existing build keeps the old URL forever.
 
+## 3b. The API must not live on a laptop
+
+The API holds WebSockets and runs timers, so it needs a host that keeps a
+process alive. `render.yaml` in the repository root is a Render Blueprint that
+creates the API (Docker, from `apps/api/Dockerfile`), its PostGIS database, and
+optionally the GOES worker.
+
+Render → **New +** → **Blueprint** → pick this repository → **Apply**. Values
+marked `sync: false` are not in the repository; Render asks for them once.
+Then point Vercel's `NEXT_PUBLIC_API_URL` and `API_INTERNAL_URL` at the Render
+service URL and redeploy.
+
+Deploying the API there removes the only laptop dependency: the Quick Tunnel and
+its rotating hostname (see `firepulse-repoint.sh`) exist purely because the API
+currently runs next to the web app.
+
 ## 4. GOES worker
 
 Build `apps/goes-worker/Dockerfile` (context `apps/goes-worker`) and set
