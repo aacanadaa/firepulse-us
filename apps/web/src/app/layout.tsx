@@ -12,6 +12,21 @@ export const metadata: Metadata = {
   manifest: "/manifest.webmanifest",
   icons: { apple: "/icons/apple-touch-icon.png" },
   appleWebApp: { capable: true, title: "FirePulse", statusBarStyle: "default" },
+  openGraph: {
+    type: "website",
+    siteName: "FirePulse US",
+    title: "FirePulse US — National fire picture",
+    description:
+      "Live wildfire early detection: thermal anomalies fused into Early Active Fire Zones next to official NIFC perimeters.",
+    url: "https://firepulse-us.vercel.app",
+    images: [{ url: "/icons/icon-512.png", width: 512, height: 512, alt: "FirePulse US" }],
+  },
+  twitter: {
+    card: "summary",
+    title: "FirePulse US — National fire picture",
+    description: "Live wildfire early detection, fused from satellite, dispatch and weather signals.",
+    images: ["/icons/icon-512.png"],
+  },
 };
 
 export const viewport: Viewport = {

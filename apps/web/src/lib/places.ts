@@ -1,4 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
+import { CITIES } from "./cities.generated";
 
 /** Static cartographic context: Atlas/Ink need no glyph server or network. */
 
@@ -9,35 +10,8 @@ export interface PlaceLabel {
   minZoom: number;
 }
 
-export const CITY_LABELS: PlaceLabel[] = [
-  { name: "Seattle", lon: -122.332, lat: 47.606, minZoom: 4.4 },
-  { name: "Portland", lon: -122.676, lat: 45.523, minZoom: 4.4 },
-  { name: "Sacramento", lon: -121.494, lat: 38.582, minZoom: 4.2 },
-  { name: "San Francisco", lon: -122.419, lat: 37.775, minZoom: 4.2 },
-  { name: "San Jose", lon: -121.886, lat: 37.338, minZoom: 5.0 },
-  { name: "Los Angeles", lon: -118.244, lat: 34.052, minZoom: 4.0 },
-  { name: "San Diego", lon: -117.161, lat: 32.716, minZoom: 4.6 },
-  { name: "Las Vegas", lon: -115.139, lat: 36.169, minZoom: 4.2 },
-  { name: "Reno", lon: -119.814, lat: 39.529, minZoom: 4.6 },
-  { name: "Phoenix", lon: -112.074, lat: 33.448, minZoom: 4.2 },
-  { name: "Tucson", lon: -110.974, lat: 32.222, minZoom: 4.8 },
-  { name: "Albuquerque", lon: -106.65, lat: 35.084, minZoom: 4.4 },
-  { name: "Denver", lon: -104.99, lat: 39.739, minZoom: 4.2 },
-  { name: "Salt Lake City", lon: -111.891, lat: 40.76, minZoom: 4.4 },
-  { name: "Boise", lon: -116.202, lat: 43.615, minZoom: 4.4 },
-  { name: "Spokane", lon: -117.426, lat: 47.658, minZoom: 4.8 },
-  { name: "Missoula", lon: -113.994, lat: 46.872, minZoom: 5.0 },
-  { name: "Billings", lon: -108.5, lat: 45.783, minZoom: 4.8 },
-  { name: "Cheyenne", lon: -104.82, lat: 41.14, minZoom: 4.8 },
-  { name: "El Paso", lon: -106.485, lat: 31.761, minZoom: 4.6 },
-  { name: "Austin", lon: -97.743, lat: 30.267, minZoom: 4.4 },
-  { name: "Dallas", lon: -96.797, lat: 32.776, minZoom: 4.4 },
-  { name: "Oklahoma City", lon: -97.516, lat: 35.468, minZoom: 4.8 },
-  { name: "Kansas City", lon: -94.578, lat: 39.099, minZoom: 4.6 },
-  { name: "Minneapolis", lon: -93.265, lat: 44.978, minZoom: 4.4 },
-  { name: "Chicago", lon: -87.63, lat: 41.878, minZoom: 4.2 },
-  { name: "St. Louis", lon: -90.199, lat: 38.627, minZoom: 4.6 },
-];
+/** 100k+ populated places from the same Natural Earth snapshot as the basemap. */
+export const CITY_LABELS: PlaceLabel[] = CITIES;
 
 export const STATE_LABELS: PlaceLabel[] = [
   { name: "WASHINGTON", lon: -120.5, lat: 47.4, minZoom: 3.4 },
@@ -231,7 +205,28 @@ function vectorLayers(ink: boolean): unknown[] {
       paint: { "fill-color": ink ? "#151515" : "#f3f0e8" },
     },
     {
+      // Built-up land: it is what makes a zoomed-in fire readable as "this is
+      // next to people", and it is cheaper than a raster.
+      id: "urban",
+      maxzoom: 8,
+      type: "fill",
+      source: BASEMAP_SOURCE,
+      "source-layer": "urban",
+      minzoom: 5,
+      paint: { "fill-color": ink ? "#1f1f1f" : "#e5dfd0", "fill-opacity": 1 },
+    },
+    {
+      id: "parks",
+      maxzoom: 8,
+      type: "fill",
+      source: BASEMAP_SOURCE,
+      "source-layer": "parks",
+      minzoom: 4,
+      paint: { "fill-color": ink ? "#16211a" : "#e2ebdc", "fill-opacity": 0.6 },
+    },
+    {
       id: "lakes",
+      maxzoom: 8,
       type: "fill",
       source: BASEMAP_SOURCE,
       "source-layer": "lakes",
@@ -239,6 +234,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "lake-outline",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "lakes",
@@ -246,6 +242,7 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     {
       id: "rivers",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "rivers",
@@ -255,27 +252,56 @@ function vectorLayers(ink: boolean): unknown[] {
       },
     },
     {
+      id: "roads-minor",
+      maxzoom: 8,
+      type: "line",
+      source: BASEMAP_SOURCE,
+      "source-layer": "roads",
+      minzoom: 5,
+      filter: ["==", ["get", "class"], "minor"],
+      paint: {
+        "line-color": ink ? "#2b2b2b" : "#d5cbb4",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.4, 10, 1.2],
+      },
+    },
+    {
+      id: "roads-major",
+      maxzoom: 8,
+      type: "line",
+      source: BASEMAP_SOURCE,
+      "source-layer": "roads",
+      minzoom: 4,
+      filter: ["==", ["get", "class"], "major"],
+      paint: {
+        "line-color": ink ? "#4a4a4a" : "#c1b49a",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 7, 1.1, 12, 2.4],
+      },
+    },
+    {
       id: "countries",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "countries",
       paint: {
-        "line-color": ink ? "#3d3d3d" : "#c4bcac",
+        "line-color": ink ? "#4a4a4a" : "#b9af9b",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.8, 8, 1.4],
       },
     },
     {
       id: "states",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "states",
       paint: {
-        "line-color": ink ? "#313131" : "#dbd5c7",
+        "line-color": ink ? "#3a3a3a" : "#cbc2ae",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.5, 9, 1],
       },
     },
     {
       id: "coast",
+      maxzoom: 8,
       type: "line",
       source: BASEMAP_SOURCE,
       "source-layer": "land",
@@ -283,6 +309,145 @@ function vectorLayers(ink: boolean): unknown[] {
         "line-color": ink ? "#3a3a3a" : "#c9c1b1",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.9, 9, 1.8],
       },
+    },
+
+    /* ---------------- high zoom: OpenStreetMap detail ----------------
+     * The shipped archive is 1:10m Natural Earth, which has no local roads
+     * and stops being useful past z7. From z8 up the map switches to OSM
+     * vector tiles (OpenFreeMap, no key), restyled into the same palette, so
+     * zooming into a fire shows streets, buildings and parks.
+     */
+    {
+      id: "osm-landuse",
+      type: "fill",
+      source: "osm",
+      "source-layer": "landuse",
+      minzoom: 10,
+      filter: ["match", ["get", "class"], ["residential", "commercial", "industrial", "retail"], true, false],
+      paint: { "fill-color": ink ? "#171717" : "#ece7db", "fill-opacity": 0.85 },
+    },
+    {
+      id: "osm-park",
+      type: "fill",
+      source: "osm",
+      "source-layer": "park",
+      minzoom: 10,
+      paint: { "fill-color": ink ? "#16211a" : "#e2ebdc", "fill-opacity": 0.9 },
+    },
+    {
+      id: "osm-water",
+      type: "fill",
+      source: "osm",
+      "source-layer": "water",
+      minzoom: 8,
+      paint: { "fill-color": ink ? "#0d1210" : "#e3e8e4" },
+    },
+    {
+      id: "osm-waterway",
+      type: "line",
+      source: "osm",
+      "source-layer": "waterway",
+      minzoom: 10,
+      paint: {
+        "line-color": ink ? "#1c2f29" : "#c6d3cf",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.4, 14, 1.6],
+      },
+    },
+    {
+      id: "osm-boundary",
+      type: "line",
+      source: "osm",
+      "source-layer": "boundary",
+      minzoom: 8,
+      filter: ["all", ["==", ["get", "admin_level"], 4], ["!=", ["get", "maritime"], 1]],
+      paint: {
+        "line-color": ink ? "#3a3a3a" : "#cbc2ae",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.6, 14, 1.4],
+        "line-dasharray": [3, 2],
+      },
+    },
+    // Roads, thin to thick. Motorways first so junctions read correctly.
+    {
+      // Residential streets arrive later than service roads: drawing every
+      // driveway at z13 turns a suburb into noise.
+      id: "osm-road-minor",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 13.5,
+      filter: ["match", ["get", "class"], ["minor", "residential"], true, false],
+      paint: {
+        "line-color": ink ? "#2a2a2a" : "#d8cfb9",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 13.5, 0.5, 16, 2.2],
+      },
+    },
+    {
+      id: "osm-road-service",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 15,
+      filter: ["match", ["get", "class"], ["service", "track"], true, false],
+      paint: {
+        "line-color": ink ? "#232323" : "#e6dfcf",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 15, 0.4, 17, 1.4],
+      },
+    },
+    {
+      id: "osm-road-tertiary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 11,
+      filter: ["match", ["get", "class"], ["tertiary"], true, false],
+      paint: {
+        "line-color": ink ? "#2e2e2e" : "#d6ccb6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 16, 3],
+      },
+    },
+    {
+      id: "osm-road-secondary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 10,
+      filter: ["match", ["get", "class"], ["secondary"], true, false],
+      paint: {
+        "line-color": ink ? "#3a3a3a" : "#cabfa6",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.7, 16, 4],
+      },
+    },
+    {
+      id: "osm-road-primary",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 9,
+      filter: ["match", ["get", "class"], ["primary"], true, false],
+      paint: {
+        "line-color": ink ? "#4a4a4a" : "#bdb093",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.9, 16, 5],
+      },
+    },
+    {
+      id: "osm-road-motorway",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 8,
+      filter: ["match", ["get", "class"], ["motorway", "trunk"], true, false],
+      paint: {
+        "line-color": ink ? "#5c5c5c" : "#b09f7c",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 1, 16, 6],
+      },
+    },
+    {
+      id: "osm-building",
+      type: "fill",
+      source: "osm",
+      "source-layer": "building",
+      minzoom: 14,
+      paint: { "fill-color": ink ? "#1c1c1c" : "#e5ddcd", "fill-opacity": 0.85 },
     },
   ];
 }
@@ -340,11 +505,17 @@ export function styleFor(type: MapType): StyleSpecification {
     name: ink ? "FirePulse Ink" : "FirePulse Atlas",
     sources: {
       graticule: { type: "geojson", data: graticule() as never },
+      // Full-detail OSM tiles for the zoom range the archive cannot serve.
+      osm: {
+        type: "vector",
+        url: "https://tiles.openfreemap.org/planet",
+        attribution: "© OpenStreetMap contributors",
+      },
       [BASEMAP_SOURCE]: {
         type: "vector",
         tiles: [`${BASEMAP_URL}/{z}/{x}/{y}`],
         minzoom: 0,
-        maxzoom: 6,
+        maxzoom: 7,
         bounds: [-142, 3, -48, 62],
         attribution: "Natural Earth",
       },

@@ -6,11 +6,14 @@ import type { KindFilter, FeedTab } from "@/lib/select";
 import type { FeedStatus } from "@/lib/store";
 import { formatMinutes, formatNumber } from "@/lib/format";
 import IncidentCard from "./IncidentCard";
+import type { FireLiveness } from "@/lib/liveness";
 import { feedProblem } from "./SourceHealth";
 import { Icon } from "./ui";
 
 interface Props {
   incidents: IncidentFeature[];
+  /** Per-fire "is it still burning?" state, keyed by incident id. */
+  liveness: Map<string, FireLiveness>;
   allCounts: { early: number; official: number; hotspots: number };
   now: number;
   cursor: number | null;
@@ -60,6 +63,7 @@ const CONFIDENCE = [
 
 export default function Sidebar({
   incidents,
+  liveness,
   allCounts,
   now,
   cursor,
@@ -114,7 +118,7 @@ export default function Sidebar({
             </h2>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)" }}>
               {mode === "near" ? `${placeCount}/5` : `${incidents.length}/${total}`}
             </span>
             <button
@@ -160,7 +164,7 @@ export default function Sidebar({
                 </button>
               ))}
               <span className="divider" aria-hidden="true" />
-              <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 8, letterSpacing: "0.08em" }}>
+              <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 10.5, letterSpacing: "0.08em" }}>
                 Min
               </label>
               <select
@@ -207,6 +211,7 @@ export default function Sidebar({
                   incident={incident}
                   selected={selectedId === incident.id}
                   now={now}
+                  liveness={liveness.get(incident.id) ?? null}
                   onSelect={onSelect}
                 />
               </div>

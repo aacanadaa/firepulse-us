@@ -47,7 +47,7 @@ export function SourceHealthList({ sources, now }: { sources: SourceHealth[]; no
           />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 11, color: "var(--ink-2)" }}>{s.label}</div>
-            <div className="mono" style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 1 }}>
               {s.status === "error" ? (
                 <span style={{ color: "var(--danger)" }}>Failing · {s.lastError ?? "poll failed"}</span>
               ) : s.status === "stale" ? (

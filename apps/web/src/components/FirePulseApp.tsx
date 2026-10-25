@@ -9,6 +9,7 @@ import type { MapType } from "@/lib/places";
 import { useNearby, usePlaces, type WatchedPlace } from "@/lib/myplaces";
 import { registerServiceWorker, useAccount, usePush } from "@/lib/account";
 import { perfFromQuery } from "@/lib/perf";
+import { buildLiveness, isStale } from "@/lib/liveness";
 import { useTheme } from "@/lib/theme";
 import type { LayerFlags } from "./MapCanvas";
 import AppHeader from "./AppHeader";
@@ -101,6 +102,9 @@ export default function FirePulseApp() {
   });
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
     if (typeof window === "undefined") return "near";
+    // ?feed=all / ?feed=near open a specific feed directly.
+    const want = new URLSearchParams(window.location.search).get("feed");
+    if (want === "all" || want === "near") return want;
     try {
       return window.localStorage.getItem(MODE_KEY) === "all" ? "all" : "near";
     } catch {
@@ -292,6 +296,22 @@ export default function FirePulseApp() {
     : null;
 
   const displayNow = cursor ?? now;
+
+  // "Does this fire still exist?" — one pass over the current data. Time is
+  // bucketed to 5 minutes: the states only change on that scale, and a new
+  // `now` every clock tick would otherwise invalidate the map layer array.
+  const livenessBucket = Math.floor((cursor ?? now) / 300_000);
+  const liveness = useMemo(
+    () => buildLiveness(mapIncidents, hotspots, livenessBucket * 300_000),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapIncidents, hotspots, livenessBucket],
+  );
+
+  const staleIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, l] of liveness) if (isStale(l.state)) out.add(id);
+    return out;
+  }, [liveness]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -510,6 +530,7 @@ export default function FirePulseApp() {
         {sidebarOpen ? (
           <Sidebar
             incidents={incidents}
+            liveness={liveness}
             allCounts={counts}
             now={displayNow}
             cursor={cursor}
@@ -584,6 +605,7 @@ export default function FirePulseApp() {
             mapType={mapType}
             focusNonce={focusNonce}
             hazards={hazards}
+            staleIds={staleIds}
             places={placesApi.places}
             focusArea={focusArea}
             onSelect={(id) => handleSelect(id)}
@@ -640,6 +662,7 @@ export default function FirePulseApp() {
             loading={detailLoading}
             spread={selectedSpread}
             spreadLoading={spread.loading}
+            liveness={selectedIncident ? (liveness.get(selectedIncident.id) ?? null) : null}
             mapType={mapType}
           />
         ) : null}
@@ -699,7 +722,7 @@ export default function FirePulseApp() {
                 }}
               />
             </div>
-            <div className="mono" style={{ fontSize: 9, color: "var(--faint)", marginTop: 9 }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 9 }}>
               {feed.status} · {store.stats?.totalSignals ?? 0} signals
             </div>
           </div>

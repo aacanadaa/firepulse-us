@@ -28,27 +28,38 @@ const OUT = join(ROOT, "apps", "web", "public", "basemap", "firepulse.pmtiles");
 
 const BBOX = [-142, 3, -48, 62];
 const MIN_ZOOM = 0;
-const MAX_ZOOM = 6;
+// z7 gives the vector basemap real detail when the map is zoomed into a fire;
+// beyond that MapLibre overzooms the z7 geometry, which is plenty for lines and
+// city labels at this scale.
+const MAX_ZOOM = 7;
 const BASE =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson";
 
 const LAYERS = [
-  { name: "land", file: "ne_50m_land", minzoom: 0, maxzoom: 6 },
-  { name: "countries", file: "ne_50m_admin_0_boundary_lines_land", minzoom: 1, maxzoom: 6 },
-  { name: "states", file: "ne_50m_admin_1_states_provinces_lines", minzoom: 2, maxzoom: 6 },
-  { name: "lakes", file: "ne_50m_lakes", minzoom: 2, maxzoom: 6 },
-  { name: "rivers", file: "ne_50m_rivers_lake_centerlines", minzoom: 3, maxzoom: 6 },
-  { name: "places", file: "ne_50m_populated_places", minzoom: 3, maxzoom: 6 },
+  // 1:10m for anything the eye lands on when zoomed into a fire.
+  { name: "land", file: "ne_10m_land", minzoom: 0, maxzoom: 7 },
+  { name: "urban", file: "ne_10m_urban_areas", minzoom: 5, maxzoom: 7 },
+  { name: "parks", file: "ne_10m_parks_and_protected_lands_area", minzoom: 4, maxzoom: 7 },
+  { name: "countries", file: "ne_10m_admin_0_boundary_lines_land", minzoom: 1, maxzoom: 7 },
+  { name: "states", file: "ne_10m_admin_1_states_provinces_lines", minzoom: 2, maxzoom: 7 },
+  { name: "lakes", file: "ne_10m_lakes", minzoom: 2, maxzoom: 7 },
+  { name: "rivers", file: "ne_10m_rivers_lake_centerlines", minzoom: 3, maxzoom: 7 },
+  // Highways are what make a zoomed-in map legible: they give the eye scale and
+  // a sense of where the fire is relative to people.
+  { name: "roads", file: "ne_10m_roads", minzoom: 4, maxzoom: 7 },
+  { name: "places", file: "ne_10m_populated_places", minzoom: 3, maxzoom: 7 },
 ];
 
 function fetchGeoJSON(file) {
   const cached = join(CACHE, `${file}.geojson`);
   if (existsSync(cached)) return JSON.parse(readFileSync(cached, "utf8"));
-  const res = spawnSync("curl", ["-sL", `${BASE}/${file}.geojson`]);
-  if (res.status !== 0) throw new Error(`download failed: ${file}`);
-  const text = res.stdout.toString("utf8");
-  writeFileSync(cached, text);
-  return JSON.parse(text);
+  // Write to disk rather than capturing stdout: the 1:10m layers are tens of
+  // megabytes, far past spawnSync's 1 MB default buffer.
+  const res = spawnSync("curl", ["-sL", "-o", cached, `${BASE}/${file}.geojson`], {
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  if (res.status !== 0 || !existsSync(cached)) throw new Error(`download failed: ${file}`);
+  return JSON.parse(readFileSync(cached, "utf8"));
 }
 
 import { spawnSync } from "node:child_process";
@@ -197,15 +208,49 @@ async function main() {
         properties: { name: f.properties?.name ?? f.properties?.NAME ?? "" },
       }));
     }
+    if (layer.name === "roads") {
+      // Only the roads that carry the eye at this zoom. Everything else turns
+      // the archive into a spaghetti mess and quadruples the tile size.
+      features = features
+        .filter((f) => {
+          const cls = String(f.properties?.type ?? f.properties?.class ?? "");
+          return /Major Highway|Secondary Highway|Beltway/i.test(cls);
+        })
+        .map((f) => ({
+          type: "Feature",
+          geometry: f.geometry,
+          properties: {
+            class: /Major Highway|Beltway/i.test(String(f.properties?.type ?? "")) ? "major" : "minor",
+          },
+        }));
+    }
+    if (layer.name === "parks") {
+      features = features.map((f) => ({
+        type: "Feature",
+        geometry: f.geometry,
+        properties: { name: f.properties?.name ?? f.properties?.NAME ?? "" },
+      }));
+    }
+    if (layer.name === "urban" || layer.name === "lakes" || layer.name === "rivers") {
+      features = features.map((f) => ({ type: "Feature", geometry: f.geometry, properties: {} }));
+    }
     console.log(`  ${layer.name}: ${features.length} features`);
     const index = geojsonvt(
       { type: "FeatureCollection", features },
       { maxZoom: MAX_ZOOM, indexMaxZoom: 4, tolerance: 2.2, buffer: 64, generateId: true },
     );
     indexes.push({ ...layer, index });
+    const fields =
+      layer.name === "places"
+        ? { name: "String", pop: "Number", capital: "Number" }
+        : layer.name === "roads"
+          ? { class: "String" }
+          : layer.name === "states" || layer.name === "parks"
+            ? { name: "String" }
+            : {};
     vectorLayers.push({
       id: layer.name,
-      fields: layer.name === "places" ? { name: "String", pop: "Number", capital: "Number" } : {},
+      fields,
       minzoom: layer.minzoom,
       maxzoom: layer.maxzoom,
     });
@@ -261,6 +306,40 @@ async function main() {
   });
 
   writeFileSync(OUT, archive);
+
+  // City labels come from the same snapshot as the basemap: an inline list with
+  // a minZoom per city means the map can label 280 places without a glyph
+  // server, and never draws a name before its city has any geometry.
+  const placeLayer = LAYERS.find((l) => l.name === "places");
+  const placeFeatures = fetchGeoJSON(placeLayer.file).features.filter(
+    (f) => f.geometry && intersects(BBOX, f.geometry),
+  );
+  const cities = placeFeatures
+    .map((f) => {
+      const [lon, lat] = f.geometry.coordinates;
+      const pop = Number(f.properties?.POP_MAX ?? 0);
+      const capital = String(f.properties?.FEATURECLA ?? "").toLowerCase().includes("capital");
+      const minZoom =
+        pop >= 1_000_000 ? 4.0 : pop >= 500_000 ? 4.8 : pop >= 250_000 ? 5.6 : pop >= 100_000 ? 6.4 : 7.0;
+      return {
+        name: String(f.properties?.NAME ?? ""),
+        lon: Math.round(lon * 1000) / 1000,
+        lat: Math.round(lat * 1000) / 1000,
+        minZoom: Math.max(3.6, Math.round((capital ? minZoom - 0.6 : minZoom) * 10) / 10),
+        pop,
+      };
+    })
+    .filter((c) => c.name && c.pop >= 100_000)
+    .sort((a, b) => b.pop - a.pop);
+  const citiesFile = join(ROOT, "apps", "web", "src", "lib", "cities.generated.ts");
+  writeFileSync(
+    citiesFile,
+    `// Generated by scripts/build-basemap.mjs — do not edit by hand.\n` +
+      `// Natural Earth 1:10m populated places inside the CONUS plate, biggest first.\n` +
+      `export interface CityLabel {\n  name: string;\n  lon: number;\n  lat: number;\n  minZoom: number;\n}\n\n` +
+      `export const CITIES: CityLabel[] = ${JSON.stringify(cities.map(({ name, lon, lat, minZoom }) => ({ name, lon, lat, minZoom })), null, 0)};\n`,
+  );
+  console.log(`wrote ${citiesFile} (${cities.length} cities)`);
   console.log(`\nwrote ${OUT} (${(archive.length / 1024 / 1024).toFixed(2)} MB, ${tiles.length} tiles)`);
 
   /* ---- validate by reading the archive back through the pmtiles reader ---- */

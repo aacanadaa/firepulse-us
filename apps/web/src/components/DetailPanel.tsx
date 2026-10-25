@@ -7,6 +7,7 @@ import {
   type SpreadForecast,
 } from "@firepulse/protocol";
 import { formatAcres, formatAge, formatDate, formatMw, formatNumber, plainFireStatus } from "@/lib/format";
+import type { FireLiveness } from "@/lib/liveness";
 import type { MapType } from "@/lib/places";
 import { Icon, Sparkline } from "./ui";
 import SpreadSection from "./SpreadSection";
@@ -20,6 +21,7 @@ interface Props {
   loading: boolean;
   spread: SpreadForecast | null;
   spreadLoading: boolean;
+  liveness: FireLiveness | null;
   mapType: MapType;
 }
 
@@ -32,6 +34,7 @@ export default function DetailPanel({
   loading,
   spread,
   spreadLoading,
+  liveness,
   mapType,
 }: Props) {
   const p = incident.properties;
@@ -82,7 +85,7 @@ export default function DetailPanel({
             gap: 7,
             marginTop: 5,
             fontFamily: "var(--mono)",
-            fontSize: 9.5,
+            fontSize: 10.5,
             color: "var(--muted)",
           }}
         >
@@ -97,6 +100,13 @@ export default function DetailPanel({
         <p style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
           {plainFireStatus(p, now)}
         </p>
+        {liveness ? (
+          <div className={`ins-live ${liveness.state}`} title="Derived from the newest evidence for this fire">
+            <span className="ins-live-dot" aria-hidden="true" />
+            <span className="ins-live-label">{liveness.label}</span>
+            <span className="ins-live-detail">{liveness.detail}</span>
+          </div>
+        ) : null}
         <div className="ins-links">
           <a
             href={`https://forecast.weather.gov/MapClick.php?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`}
@@ -144,28 +154,28 @@ export default function DetailPanel({
         <div className="ins-section">
           <div className="ins-section-head">
             <span className="kicker">Fire state</span>
-            <span className="mono" style={{ fontSize: 9, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
               {formatAge(age)} since last signal
             </span>
           </div>
           <div className="metric-grid">
             <div className="metric">
-              <div className="kicker" style={{ fontSize: 8.5 }}>Zone area</div>
+              <div className="kicker" style={{ fontSize: 10 }}>Zone area</div>
               <div className="v">{formatAcres(p.areaAcres)}</div>
             </div>
             <div className="metric">
-              <div className="kicker" style={{ fontSize: 8.5 }}>Radiative power</div>
+              <div className="kicker" style={{ fontSize: 10 }}>Radiative power</div>
               <div className="v">{formatMw(p.frp)}</div>
             </div>
             <div className="metric">
-              <div className="kicker" style={{ fontSize: 8.5 }}>Growth</div>
+              <div className="kicker" style={{ fontSize: 10 }}>Growth</div>
               <div className="v" style={{ color: p.growthAcresPerHour > 100 ? "var(--accent)" : undefined }}>
                 {p.growthAcresPerHour >= 0 ? "+" : "−"}
                 {formatNumber(Math.abs(p.growthAcresPerHour))} ac/h
               </div>
             </div>
             <div className="metric">
-              <div className="kicker" style={{ fontSize: 8.5 }}>Hotspots</div>
+              <div className="kicker" style={{ fontSize: 10 }}>Hotspots</div>
               <div className="v">{p.hotspotCount}</div>
             </div>
           </div>
@@ -176,7 +186,7 @@ export default function DetailPanel({
         <div className="ins-section">
           <div className="ins-section-head">
             <span className="kicker">Confidence</span>
-            <span className="mono" style={{ fontSize: 9, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
               {official ? "ground truth" : `${p.evidence.length} sources`}
             </span>
           </div>
@@ -197,7 +207,7 @@ export default function DetailPanel({
             <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
               / 100
             </span>
-            <span className="mono" style={{ marginLeft: "auto", fontSize: 8.5, color: "var(--faint)" }}>
+            <span className="mono" style={{ marginLeft: "auto", fontSize: 10, color: "var(--faint)" }}>
               {b.rationale}
             </span>
           </div>
@@ -238,7 +248,7 @@ export default function DetailPanel({
                   />
                 </span>
               </div>
-              <div className="mono" style={{ fontSize: 8.5, color: "var(--faint)", marginTop: 10 }}>
+              <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 10 }}>
                 100 × {b.fused.toFixed(3)} × {b.corroboration.toFixed(2)} × {b.freshness.toFixed(2)}
               </div>
             </>
@@ -248,7 +258,7 @@ export default function DetailPanel({
         <div className="ins-section">
           <div className="ins-section-head">
             <span className="kicker">Evidence</span>
-            <span className="mono" style={{ fontSize: 9, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
               {p.evidence.length} sources
             </span>
           </div>
@@ -260,24 +270,24 @@ export default function DetailPanel({
           ) : (
             <>
               <div className="evidence-head">
-                <span className="kicker" style={{ fontSize: 8 }}>Source</span>
-                <span className="kicker" style={{ fontSize: 8, textAlign: "right" }}>Count</span>
-                <span className="kicker" style={{ fontSize: 8, textAlign: "right" }}>Weight</span>
+                <span className="kicker" style={{ fontSize: 10.5 }}>Source</span>
+                <span className="kicker" style={{ fontSize: 10.5, textAlign: "right" }}>Count</span>
+                <span className="kicker" style={{ fontSize: 10.5, textAlign: "right" }}>Weight</span>
               </div>
               {p.evidence.map((e) => (
                 <div key={e.source} className="evidence-row">
                   <div style={{ minWidth: 0 }}>
-                    <div className="mono" style={{ fontSize: 9.5, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                    <div className="mono" style={{ fontSize: 10.5, letterSpacing: "0.03em", textTransform: "uppercase" }}>
                       {e.source}
                     </div>
-                    <div style={{ fontSize: 9, color: "var(--faint)", marginTop: 1 }}>
+                    <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 1 }}>
                       {MODALITY_LABEL[e.modality] ?? e.modality}
                     </div>
                   </div>
-                  <div className="mono" style={{ fontSize: 9.5, textAlign: "right", color: "var(--muted)" }}>
+                  <div className="mono" style={{ fontSize: 10.5, textAlign: "right", color: "var(--muted)" }}>
                     {e.count}
                   </div>
-                  <div className="mono" style={{ fontSize: 9.5, textAlign: "right" }}>
+                  <div className="mono" style={{ fontSize: 10.5, textAlign: "right" }}>
                     {Math.round(e.contribution * 100)}%
                   </div>
                   <div className="evidence-bar">
@@ -292,7 +302,7 @@ export default function DetailPanel({
         <div className="ins-section">
           <div className="ins-section-head">
             <span className="kicker">Evidence over 6 hours</span>
-            <span className="mono" style={{ fontSize: 9, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
               {series.length > 1 ? `${series.length} samples` : "collecting"}
             </span>
           </div>
@@ -302,8 +312,8 @@ export default function DetailPanel({
           ) : (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <span className="kicker" style={{ fontSize: 8 }}>FRP · megawatts</span>
-                <span className="mono" style={{ fontSize: 9.5 }}>{formatMw(p.frp)}</span>
+                <span className="kicker" style={{ fontSize: 10.5 }}>FRP · megawatts</span>
+                <span className="mono" style={{ fontSize: 10.5 }}>{formatMw(p.frp)}</span>
               </div>
               <Sparkline
                 values={series.length > 1 ? series.map((s) => s.frp) : [p.frp * 0.4, p.frp]}
@@ -311,8 +321,8 @@ export default function DetailPanel({
                 color="var(--accent)"
               />
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 12 }}>
-                <span className="kicker" style={{ fontSize: 8 }}>Confidence</span>
-                <span className="mono" style={{ fontSize: 9.5 }}>{p.confidence}%</span>
+                <span className="kicker" style={{ fontSize: 10.5 }}>Confidence</span>
+                <span className="mono" style={{ fontSize: 10.5 }}>{p.confidence}%</span>
               </div>
               <Sparkline
                 values={series.length > 1 ? series.map((s) => s.confidence) : [p.confidence * 0.7, p.confidence]}
@@ -321,7 +331,7 @@ export default function DetailPanel({
               />
               <div
                 className="mono"
-                style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 8, color: "var(--faint)" }}
+                style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 10.5, color: "var(--faint)" }}
               >
                 <span>−6h</span>
                 <span>{formatDate(Date.parse(p.firstDetectedAt))}</span>
