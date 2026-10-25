@@ -1,5 +1,8 @@
 # FirePulse US
 
+**Live: <https://firepulse-us.vercel.app>** — web on Vercel, API and PostGIS on
+Render. Nothing runs on a laptop.
+
 **Real-time wildfire detection that does not wait for the paperwork.**
 
 Traditional wildfire maps show you fires the government has already surveyed and
