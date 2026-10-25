@@ -1,6 +1,6 @@
 import type { StyleSpecification } from "maplibre-gl";
 
-/** Static cartographic context — Atlas/Ink need no glyph server or network. */
+/** Static cartographic context: Atlas/Ink need no glyph server or network. */
 
 export interface PlaceLabel {
   name: string;
@@ -305,7 +305,7 @@ export function styleFor(type: MapType): StyleSpecification {
           maxzoom: topo ? 18 : 14,
           attribution: topo
             ? RASTER_ATTRIBUTION
-            : "EOX Sentinel-2 cloudless (2023) — s2maps.eu",
+            : "EOX Sentinel-2 cloudless (2023), s2maps.eu",
         },
       },
       layers: [

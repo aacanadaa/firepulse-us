@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- FirePulse US — minimal development seed
+-- FirePulse US: minimal development seed
 -- Two official incidents with SOHO-style perimeters and a little raw evidence.
 -- Run after 001_init.sql:  psql "$DATABASE_URL" -f db/seed/dev_seed.sql
 -- ---------------------------------------------------------------------------

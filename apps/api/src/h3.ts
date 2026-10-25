@@ -8,7 +8,7 @@ export function cellOf(lon: number, lat: number, res = H3_RES): string {
   return latLngToCell(lat, lon, res);
 }
 
-/** Cell plus k-ring neighbours — used for stable cluster identity. */
+/** Cell plus k-ring neighbours, used for stable cluster identity. */
 export function neighborhood(lon: number, lat: number, k = 1, res = H3_RES): string[] {
   return gridDisk(latLngToCell(lat, lon, res), k);
 }

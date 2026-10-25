@@ -2,7 +2,7 @@ import type { HazardEvent, SourceId } from "@firepulse/protocol";
 import { SOURCE_PROFILES } from "@firepulse/protocol";
 
 export function formatAge(ms: number): string {
-  if (!Number.isFinite(ms)) return "—";
+  if (!Number.isFinite(ms)) return "-";
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -32,7 +32,7 @@ export function hazardTier(event: HazardEvent): HazardTier {
 
 /** Distances for people, not analysts: "800 m", "4.2 km", "35 km". */
 export function formatKm(km: number): string {
-  if (!Number.isFinite(km)) return "—";
+  if (!Number.isFinite(km)) return "-";
   if (km < 1) return `${Math.max(100, Math.round((km * 1000) / 100) * 100)} m`;
   return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }
@@ -65,7 +65,7 @@ export function plainFireStatus(p: FireLike, now: number): string {
 
 /** A duration in minutes, e.g. "45 min" or "30 h". */
 export function formatMinutes(min: number): string {
-  if (!Number.isFinite(min)) return "—";
+  if (!Number.isFinite(min)) return "-";
   if (min < 120) return `${Math.round(min)} min`;
   return `${Math.round(min / 60)} h`;
 }
@@ -98,21 +98,21 @@ export function formatDate(ms: number): string {
 }
 
 export function formatNumber(n: number, digits = 0): string {
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "-";
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000) return `${(n / 1000).toFixed(1)}k`;
   return n.toLocaleString("en-US", { maximumFractionDigits: digits });
 }
 
 export function formatAcres(n: number): string {
-  if (!Number.isFinite(n)) return "—";
+  if (!Number.isFinite(n)) return "-";
   if (n >= 100_000) return `${Math.round(n / 1000)}k ac`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k ac`;
   return `${Math.round(n)} ac`;
 }
 
 export function formatMw(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—";
+  if (!Number.isFinite(n) || n <= 0) return "-";
   if (n >= 1000) return `${(n / 1000).toFixed(1)} GW`;
   return `${Math.round(n)} MW`;
 }

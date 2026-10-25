@@ -62,7 +62,7 @@ export interface TimelineResponse {
  *
  * Snapshots replace the viewport; deltas patch it. Everything downstream
  * (sidebar, map, timeline) reads these Maps, so a WebSocket frame that
- * changes one incident touches exactly one entry — never the whole dataset.
+ * changes one incident touches exactly one entry, never the whole dataset.
  */
 export class LiveStore {
   incidents = new Map<string, IncidentFeature>();

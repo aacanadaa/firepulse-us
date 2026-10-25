@@ -2,7 +2,7 @@
  * Demo geography. Every fire below is fictional but placed on real terrain
  * near real towns; the signal cadences mirror the production sources.
  *
- * `officialDelayMin` is the simulated latency of government mapping —
+ * `officialDelayMin` is the simulated latency of government mapping:
  * the number the product exists to beat. `null` means the fire never gets
  * an official perimeter during the session (early estimates only).
  */

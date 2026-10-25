@@ -253,7 +253,7 @@ export class FusionEngine {
       const areaSqKm = ringAreaSqKm(polygon);
 
       // The estimate's clock starts at its earliest supporting observation,
-      // not at the fusion tick — otherwise lead-time reporting is dishonest.
+      // not at the fusion tick; otherwise lead-time reporting is dishonest.
       const earliestEvidence = Math.min(
         ...evidence.map((s) => Date.parse(s.observedAt)).filter((t) => Number.isFinite(t)),
         now,

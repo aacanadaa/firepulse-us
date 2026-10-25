@@ -124,7 +124,7 @@ export default function AppHeader({
           <span className="k">Hotspots</span>
         </div>
         <div className="hdr-stat hide-sm">
-          <span className="v">{medianLead == null ? "—" : `${medianLead} min`}</span>
+          <span className="v">{medianLead == null ? "-" : `${medianLead} min`}</span>
           <span className="k">Median lead</span>
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function AppHeader({
               type="button"
               className={`segment ${mapType === t.id ? "active" : ""}`}
               onClick={() => onMapType(t.id)}
-              title={`${t.name} — ${t.note}`}
+              title={`${t.name}: ${t.note}`}
               aria-pressed={mapType === t.id}
             >
               {t.label}

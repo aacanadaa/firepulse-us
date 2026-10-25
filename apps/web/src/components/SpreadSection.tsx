@@ -90,12 +90,12 @@ export default function SpreadSection({ forecast, loading, mapType, now }: Props
 
           <dl className="provenance" style={{ marginTop: 10 }}>
             <dt>Valid until</dt>
-            <dd>{ready.validFor ? when(Date.parse(ready.validFor)) : "—"}</dd>
+            <dd>{ready.validFor ? when(Date.parse(ready.validFor)) : "-"}</dd>
             <dt>Updated</dt>
             <dd>
               {ready.generatedAt
                 ? `${formatAge(Math.max(0, now - Date.parse(ready.generatedAt)))} ago`
-                : "—"}
+                : "-"}
             </dd>
             <dt>Model</dt>
             <dd title="Area under the precision-recall curve on held-out fires. Higher is better.">

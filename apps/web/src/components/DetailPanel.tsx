@@ -255,7 +255,7 @@ export default function DetailPanel({
 
           {p.evidence.length === 0 ? (
             <p className="disclaimer" style={{ margin: 0 }}>
-              Official data only — no algorithmic evidence attached.
+              Official data only; no algorithmic evidence attached.
             </p>
           ) : (
             <>
@@ -366,7 +366,7 @@ export default function DetailPanel({
             <dd>
               {p.officialSince
                 ? new Date(p.officialSince).toLocaleString("en-US", { timeZone: "America/Los_Angeles", hour12: false })
-                : "—"}
+                : "-"}
             </dd>
             <dt>Centroid</dt>
             <dd>{p.lat.toFixed(4)}, {p.lon.toFixed(4)}</dd>

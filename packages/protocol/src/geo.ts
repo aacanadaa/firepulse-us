@@ -1,5 +1,5 @@
 /**
- * FirePulse US — dependency-free geodesy + clustering primitives.
+ * FirePulse US: dependency-free geodesy + clustering primitives.
  *
  * Everything here is small, deterministic and testable. Production spatial
  * predicates live in PostGIS (see db/migrations/001_init.sql); these functions
@@ -151,7 +151,7 @@ export function convexHull(points: LngLat[]): Ring {
 
 /**
  * Minkowski-sum buffer: convex hull of discs of radius `radiusKm` placed at
- * every hull vertex. Produces a smooth, outward-offset convex polygon — the
+ * every hull vertex. Produces a smooth, outward-offset convex polygon, the
  * "buffered convex hull" used for Estimated Active Fire Zones.
  */
 export function bufferedHull(points: LngLat[], radiusKm: number, segments = 12): Ring {
@@ -407,7 +407,7 @@ export function fmtCoord(v: number, digits = 4): string {
 
 /** Compact age label: "42s", "7m", "3h 12m". */
 export function formatAge(ms: number): string {
-  if (!Number.isFinite(ms)) return "—";
+  if (!Number.isFinite(ms)) return "-";
   const s = Math.max(0, Math.floor(ms / 1000));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);

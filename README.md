@@ -3,7 +3,7 @@
 **Real-time wildfire detection that does not wait for the paperwork.**
 
 Traditional wildfire maps show you fires the government has already surveyed and
-published — often hours after ignition. FirePulse ingests the signals that exist
+published, often hours after ignition. FirePulse ingests the signals that exist
 *now*: CAD dispatch, scanner audio, PTZ cameras, crowdsourced sightings, GOES and
 VIIRS thermal anomalies, PM2.5 spikes and RAWS wind. It clusters them, scores
 their convergence, and publishes **Early Active Fire Zones** alongside official
@@ -26,7 +26,7 @@ and the minutes of warning are recorded.
 | Thermal rendering | JSON markers | WebGL attribute layers, 20 k+ points |
 | Time | "now" only | 24 h scrubber replaying heat vs. mapped perimeters |
 
-The headline metric — **median head start** — is shown in the HUD and computed
+The headline metric, **median head start**, is shown in the HUD and computed
 from the merge ledger: `official_since − first_detected_at`.
 
 ---
@@ -73,7 +73,7 @@ from the merge ledger: `official_since − first_detected_at`.
 - **H3 density.** Toggle the hexagonal cells that give every fused zone its
   stable identity.
 - **No-key demo.** The default simulation produces 24 h of history, live
-  ignitions, late official perimeters and real merges — through the *same*
+  ignitions, late official perimeters and real merges, all through the *same*
   ingestion, fusion and transport code as production.
 
 | Detail panel | Replay mode |
@@ -384,7 +384,7 @@ firepulse/
 ├── apps/
 │   ├── api/                  Fastify + WebSocket ingestion & fusion service
 │   │   ├── src/
-│   │   │   ├── fusion/       engine.ts — clustering, confidence, merge, diff
+│   │   │   ├── fusion/       engine.ts: clustering, confidence, merge, diff
 │   │   │   ├── sources/      adapters: FIRMS, WFIGS, NWS, AirNow, wind + simulated
 │   │   │   ├── accounts/     users, sessions, places, Google sign-in, routes
 │   │   │   ├── notify/       alert rules, alert engine, Web Push outbox

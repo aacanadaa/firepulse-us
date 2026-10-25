@@ -23,7 +23,7 @@ export interface SelectOptions {
  * This is the heart of the time scrubber: a fire is only visible if it had
  * been detected by the cursor, official perimeters only appear once the
  * government published them, and a merged early estimate hides exactly when
- * its official successor appears — so replaying the last 24 h shows the
+ * its official successor appears, so replaying the last 24 h shows the
  * warning lead time instead of hindsight.
  */
 export function selectIncidents(store: LiveStore, opts: SelectOptions): IncidentFeature[] {

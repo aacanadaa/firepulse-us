@@ -44,7 +44,7 @@ type IncidentRow = {
 };
 
 /**
- * PostGIS-backed store. Batch writes go through `jsonb_to_recordset` — one
+ * PostGIS-backed store. Batch writes go through `jsonb_to_recordset`: one
  * round trip per flush regardless of batch size. The fusion engine is the
  * only writer of incidents; signals are append-only.
  */

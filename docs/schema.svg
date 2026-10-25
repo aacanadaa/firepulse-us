@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" role="img" aria-labelledby="stitle sdesc">
-  <title id="stitle">FirePulse US — PostGIS schema</title>
+  <title id="stitle">FirePulse US: PostGIS schema</title>
   <desc id="sdesc">Entity relationship diagram of raw signals, fused incidents, evidence, official perimeter revisions, merge ledger and audit tables.</desc>
   <defs>
     <linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1">
@@ -33,7 +33,7 @@
 
   <g>
     <rect x="40" y="34" width="26" height="26" rx="8" fill="#ff8a3d"/>
-    <text x="78" y="48" class="h" font-size="19" fill="#f2f6fb">FIREPULSE <tspan fill="#ffb020">US</tspan> <tspan font-weight="400" font-size="14" fill="#8b97a7">— POSTGIS SCHEMA</tspan></text>
+    <text x="78" y="48" class="h" font-size="19" fill="#f2f6fb">FIREPULSE <tspan fill="#ffb020">US</tspan> <tspan font-weight="400" font-size="14" fill="#8b97a7">· POSTGIS SCHEMA</tspan></text>
     <text x="78" y="66" class="t" font-size="10" fill="#5f6b7a">EPSG:4326 for transport · generated EPSG:5070 (metres) for every distance, area and cluster</text>
     <text x="1560" y="48" text-anchor="end" class="t" font-size="10" fill="#6d7684">db/migrations/001_init.sql</text>
     <text x="1560" y="66" text-anchor="end" class="t" font-size="10" fill="#4f5a69">PostgreSQL 15+ · PostGIS 3.3+</text>
@@ -74,7 +74,7 @@
   </g>
   <text x="598" y="116" class="t" font-size="12" fill="#ffc45c" font-weight="700">fire_incident</text>
   <text x="994" y="116" text-anchor="end" class="t" font-size="9" fill="#8a6a35">ESTIMATED + OFFICIAL</text>
-  <text x="598" y="132" class="fnote">one relation for both kinds — feed and diff never UNION</text>
+  <text x="598" y="132" class="fnote">one relation for both kinds; feed and diff never UNION</text>
   <line x1="580" y1="144" x2="1012" y2="144" class="divider"/>
 
   <g class="t">
@@ -196,7 +196,7 @@
     <text x="598" y="678" class="fname">incidents_merged</text><text x="790" y="678" class="ftype">integer</text>
     <text x="598" y="698" class="fname">radius_m · window_minutes</text><text x="810" y="698" class="ftype">integer</text>
   </g>
-  <text x="598" y="716" class="fnote">one row per 4 s pass — latency regression detection</text>
+  <text x="598" y="716" class="fnote">one row per 4 s pass, for latency regression detection</text>
 
   <!-- ===================== WIND FIELD ===================== -->
   <g filter="url(#sshadow)">

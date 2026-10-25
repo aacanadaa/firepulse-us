@@ -2,7 +2,7 @@
   "name": "firepulse-us",
   "version": "1.0.0",
   "private": true,
-  "description": "FirePulse US \u2014 real-time wildfire fusion tracker (early signals + official ground truth)",
+  "description": "FirePulse US: real-time wildfire fusion tracker (early signals + official ground truth)",
   "packageManager": "pnpm@12.11.2",
   "engines": {
     "node": ">=20"

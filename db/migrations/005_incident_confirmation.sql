@@ -1,5 +1,5 @@
 -- =====================================================================
---  005 — keep an estimate's confirmation level across restarts
+--  005: keep an estimate's confirmation level across restarts
 -- =====================================================================
 
 alter table firepulse.fire_incident
