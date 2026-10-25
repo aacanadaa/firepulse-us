@@ -286,6 +286,11 @@ export default function Legend({ open, onClose, mapType }: Props) {
             The key follows the basemap: the same fire is drawn in ink-on-paper on Atlas and
             chalk-on-carbon on Ink.
           </p>
+          <p className="acct-hint">
+            Atlas and Ink are two-tier: Natural Earth carries the country from z0–7, then
+            OpenStreetMap takes over for streets, buildings and parks. Attribution for both is
+            shown on the map.
+          </p>
         </div>
       </aside>
     </>
