@@ -383,6 +383,8 @@ export default function MapCanvas({
         if (cancelled) return;
         setMap(map);
         setZoom(map.getZoom());
+        const c0 = map.getCenter();
+        setCoords([c0.lng, c0.lat]);
         emitViewport();
         installOfficial(map);
       });
@@ -565,15 +567,15 @@ export default function MapCanvas({
         pickable: false,
         getPosition: (d: (typeof CITY_LABELS)[number]) => [d.lon, d.lat],
         getText: (d: (typeof CITY_LABELS)[number]) => d.name,
-        getSize: 9,
-        getColor: rgba(theme.cityLabel, Math.round(215 * theme.cityOpacity)),
+        getSize: zoom >= 7 ? 10.5 : 9.5,
+        getColor: rgba(theme.cityLabel, Math.round(240 * theme.cityOpacity)),
         getPixelOffset: [0, 10],
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         fontWeight: 600,
         characterSet: "auto",
         billboard: true,
-        outlineWidth: 1.1,
-        outlineColor: rgba(theme.labelOutline, 200),
+        outlineWidth: 1.4,
+        outlineColor: rgba(theme.labelOutline, 220),
         fontSettings: { sdf: true, buffer: 6, radius: 4 },
       }),
       incidentLabelLayer(incidents, {

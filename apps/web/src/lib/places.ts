@@ -212,7 +212,7 @@ function vectorLayers(ink: boolean): unknown[] {
       source: BASEMAP_SOURCE,
       "source-layer": "urban",
       minzoom: 5,
-      paint: { "fill-color": ink ? "#1b1b1b" : "#e9e4d9", "fill-opacity": 0.9 },
+      paint: { "fill-color": ink ? "#1f1f1f" : "#e5dfd0", "fill-opacity": 1 },
     },
     {
       id: "parks",
@@ -220,7 +220,7 @@ function vectorLayers(ink: boolean): unknown[] {
       source: BASEMAP_SOURCE,
       "source-layer": "parks",
       minzoom: 4,
-      paint: { "fill-color": ink ? "#141a16" : "#e6ece2", "fill-opacity": 0.85 },
+      paint: { "fill-color": ink ? "#16211a" : "#e2ebdc", "fill-opacity": 0.6 },
     },
     {
       id: "lakes",
@@ -254,7 +254,7 @@ function vectorLayers(ink: boolean): unknown[] {
       minzoom: 5,
       filter: ["==", ["get", "class"], "minor"],
       paint: {
-        "line-color": ink ? "#242424" : "#e3ddce",
+        "line-color": ink ? "#2b2b2b" : "#d5cbb4",
         "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.4, 10, 1.2],
       },
     },
@@ -266,7 +266,7 @@ function vectorLayers(ink: boolean): unknown[] {
       minzoom: 4,
       filter: ["==", ["get", "class"], "major"],
       paint: {
-        "line-color": ink ? "#3a3a3a" : "#cfc6b2",
+        "line-color": ink ? "#4a4a4a" : "#c1b49a",
         "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 7, 1.1, 12, 2.4],
       },
     },
@@ -276,7 +276,7 @@ function vectorLayers(ink: boolean): unknown[] {
       source: BASEMAP_SOURCE,
       "source-layer": "countries",
       paint: {
-        "line-color": ink ? "#3d3d3d" : "#c4bcac",
+        "line-color": ink ? "#4a4a4a" : "#b9af9b",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.8, 8, 1.4],
       },
     },
@@ -286,7 +286,7 @@ function vectorLayers(ink: boolean): unknown[] {
       source: BASEMAP_SOURCE,
       "source-layer": "states",
       paint: {
-        "line-color": ink ? "#313131" : "#dbd5c7",
+        "line-color": ink ? "#3a3a3a" : "#cbc2ae",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.5, 9, 1],
       },
     },

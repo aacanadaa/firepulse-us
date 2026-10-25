@@ -358,7 +358,15 @@ export function incidentLabelLayer(
   const { selectedId, zoom, visible, theme, staleIds } = opts;
 
   // Unconfirmed satellite heat is too common to label; it's named when selected.
-  const ranked = incidents.filter((f) => f.id === selectedId || !unconfirmed(f)).sort((a, b) => {
+  const ranked = incidents
+    .filter(
+      (f) =>
+        f.id === selectedId ||
+        // Planned burns are numerous and small: they may not take label space
+        // at continental zoom, or the map reads as a list of permit numbers.
+        (!unconfirmed(f) && (zoom >= 6 || f.properties.cause !== "prescribed")),
+    )
+    .sort((a, b) => {
     if (a.id === selectedId) return -1;
     if (b.id === selectedId) return 1;
     const kindDelta =
