@@ -248,7 +248,7 @@ export default function MapCanvas({
           source: "official-perimeters",
           paint: {
             "fill-color": t.officialFill,
-            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.35, 1] as never,
+            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.6, 1] as never,
           },
         });
         m.addLayer({
@@ -257,7 +257,7 @@ export default function MapCanvas({
           source: "official-perimeters",
           paint: {
             "fill-pattern": hatchKey,
-            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.18, 0.55] as never,
+            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.3, 0.55] as never,
           },
         });
         m.addLayer({
@@ -267,7 +267,7 @@ export default function MapCanvas({
           paint: {
             "line-color": t.officialCasing,
             "line-width": ["interpolate", ["linear"], ["zoom"], 4, 3, 9, 4.2],
-            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.3, 0.92] as never,
+            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.55, 0.92] as never,
           },
         });
         m.addLayer({
@@ -277,7 +277,7 @@ export default function MapCanvas({
           paint: {
             "line-color": t.official,
             "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.1, 9, 1.9],
-            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.3, 1] as never,
+            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.55, 1] as never,
           },
         });
 

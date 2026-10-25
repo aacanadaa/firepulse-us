@@ -196,7 +196,7 @@ export function estimatedZoneLayer(
     getFillColor: (f: IncidentFeature) => {
       const fill = rgba(theme.estimatedFill);
       const stale = staleIds?.has(f.id) ?? false;
-      if (stale) return withAlpha(fill, Math.round(fill[3] * 0.35));
+      if (stale) return withAlpha(fill, Math.round(fill[3] * 0.6));
       return unconfirmed(f) ? withAlpha(fill, Math.round(fill[3] * 0.4)) : fill;
     },
     stroked: false,
@@ -242,7 +242,7 @@ export function estimatedOutlineLayer(
     getColor: (f: IncidentFeature) => {
       // Fires with no recent heat fade back instead of disappearing: they are
       // still part of the record, just not part of tonight's picture.
-      if (staleIds?.has(f.id)) return withAlpha(rgba(theme.estimated), 60);
+      if (staleIds?.has(f.id)) return withAlpha(rgba(theme.estimated), 95);
       return withAlpha(rgba(theme.estimated), unconfirmed(f) ? 90 : 150 + Math.round(pulse * 90));
     },
     widthUnits: "pixels",
@@ -273,7 +273,7 @@ export function markerLayer(
     radiusMinPixels: 2.8,
     radiusMaxPixels: 6,
     getRadius: (f: IncidentFeature) =>
-      staleIds?.has(f.id) ? 2.2 : unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4,
+      staleIds?.has(f.id) ? 3 : unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4,
     // Estimates are rings; official points are filled. This keeps the
     // provisional marker distinguishable from a thermal speck at any zoom.
     filled: !estimated,
@@ -282,7 +282,7 @@ export function markerLayer(
       const base = unconfirmed(f)
         ? withAlpha(rgba(theme.estimated), 70)
         : rgba(estimated ? theme.estimated : theme.markerStroke);
-      return staleIds?.has(f.id) ? withAlpha(base, 90) : base;
+      return staleIds?.has(f.id) ? withAlpha(base, 150) : base;
     },
     lineWidthUnits: "pixels",
     getLineWidth: (f: IncidentFeature) => (unconfirmed(f) ? 1 : estimated ? 1.6 : 1.2),
@@ -406,7 +406,7 @@ export function incidentLabelLayer(
     getText: (f: IncidentFeature) => f.properties.name,
     getColor: (f: IncidentFeature) => {
       const base = rgba(theme.labelText);
-      return staleIds?.has(f.id) ? withAlpha(base, 120) : base;
+      return staleIds?.has(f.id) ? withAlpha(base, 175) : base;
     },
     getSize: (f) => (f.id === selectedId ? 12 : 10.5),
     sizeUnits: "pixels",
