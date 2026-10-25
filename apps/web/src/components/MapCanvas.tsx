@@ -29,6 +29,7 @@ import {
   h3Layer,
   hazardLayers,
   hotspotLayers,
+  incidentHitLayer,
   incidentLabelLayer,
   markerLayer,
   officialPickLayer,
@@ -65,6 +66,8 @@ interface Props {
   mapType: MapType;
   focusNonce: number;
   hazards: HazardAlertFeature[];
+  /** Fires with no recent heat: drawn back so the map reads as "tonight". */
+  staleIds: Set<string>;
   places: MapPlace[];
   /** Fit the map to a point and radius; a new nonce re-triggers it. */
   focusArea: { lon: number; lat: number; radiusKm: number; nonce: number } | null;
@@ -73,6 +76,22 @@ interface Props {
 }
 
 const CONUS_CENTER: [number, number] = [-99.2, 38.3];
+
+/** Closest fire to a clicked thermal detection, within ~6 km. */
+function nearestIncident(incidents: IncidentFeature[], lon: number, lat: number): string | null {
+  let best: string | null = null;
+  let bestD = 0.06; // roughly 6 km, in degrees
+  for (const f of incidents) {
+    const p = f.properties;
+    const dLon = (p.lon - lon) * Math.cos((lat * Math.PI) / 180);
+    const d = Math.hypot(dLon, p.lat - lat);
+    if (d < bestD) {
+      bestD = d;
+      best = f.id;
+    }
+  }
+  return best;
+}
 /** Marks where the animated outline goes inside the static layer array. */
 const PULSE_SLOT = Symbol("firepulse.pulse-slot");
 const CONUS_ZOOM = 4.0;
@@ -114,6 +133,7 @@ export default function MapCanvas({
   mapType,
   focusNonce,
   hazards,
+  staleIds,
   places,
   focusArea,
   onSelect,
@@ -150,6 +170,7 @@ export default function MapCanvas({
   const layersRef = useRef(layers);
   layersRef.current = layers;
   const officialRef = useRef<IncidentFeature[]>([]);
+  const incidentsRef = useRef<IncidentFeature[]>([]);
   /** Latest computed layers, so a freshly added overlay is never left empty. */
   const deckLayersRef = useRef<unknown[]>([]);
   const hatchRef = useRef<Record<string, ImageBitmap | null>>({});
@@ -218,28 +239,26 @@ export default function MapCanvas({
 
         m.addSource("official-perimeters", {
           type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: officialRef.current.map((f) => ({
-              type: "Feature" as const,
-              id: f.id,
-              properties: { id: f.id, name: f.properties.name },
-              geometry: f.geometry,
-            })),
-          },
+          data: officialGeoJSONRef.current as never,
         });
 
         m.addLayer({
           id: "official-base",
           type: "fill",
           source: "official-perimeters",
-          paint: { "fill-color": t.officialFill, "fill-opacity": 1 },
+          paint: {
+            "fill-color": t.officialFill,
+            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.35, 1] as never,
+          },
         });
         m.addLayer({
           id: "official-hatch-fill",
           type: "fill",
           source: "official-perimeters",
-          paint: { "fill-pattern": hatchKey, "fill-opacity": 0.55 },
+          paint: {
+            "fill-pattern": hatchKey,
+            "fill-opacity": ["case", ["==", ["get", "stale"], 1], 0.18, 0.55] as never,
+          },
         });
         m.addLayer({
           id: "official-casing",
@@ -248,7 +267,7 @@ export default function MapCanvas({
           paint: {
             "line-color": t.officialCasing,
             "line-width": ["interpolate", ["linear"], ["zoom"], 4, 3, 9, 4.2],
-            "line-opacity": 0.92,
+            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.3, 0.92] as never,
           },
         });
         m.addLayer({
@@ -258,7 +277,7 @@ export default function MapCanvas({
           paint: {
             "line-color": t.official,
             "line-width": ["interpolate", ["linear"], ["zoom"], 4, 1.1, 9, 1.9],
-            "line-opacity": 1,
+            "line-opacity": ["case", ["==", ["get", "stale"], 1], 0.3, 1] as never,
           },
         });
 
@@ -297,11 +316,24 @@ export default function MapCanvas({
       if (cancelled) return;
 
       const compact = window.innerWidth <= 900;
+      // ?lat=&lon=&z= makes a view shareable (and a fire easy to put on screen
+      // during a demo).
+      const qs = new URLSearchParams(window.location.search);
+      const qLat = Number(qs.get("lat"));
+      const qLon = Number(qs.get("lon"));
+      const qZoom = Number(qs.get("z"));
+      const startCenter: [number, number] =
+        Number.isFinite(qLat) && Number.isFinite(qLon) && qs.has("lat") && qs.has("lon")
+          ? [qLon, qLat]
+          : compact
+            ? [-119.7, 37.6]
+            : CONUS_CENTER;
+      const startZoom = qs.has("z") && Number.isFinite(qZoom) ? qZoom : compact ? 4.55 : CONUS_ZOOM;
       const map = new maplibregl.Map({
         container: containerRef.current,
         style: styleFor(mapTypeRef.current) as never,
-        center: compact ? ([-119.7, 37.6] as [number, number]) : CONUS_CENTER,
-        zoom: compact ? 4.55 : CONUS_ZOOM,
+        center: startCenter,
+        zoom: startZoom,
         minZoom: 3,
         maxZoom: 15,
         maxPitch: 0,
@@ -404,28 +436,48 @@ export default function MapCanvas({
     });
   }, [map, mapType, installOfficial]);
 
+  // More cities than before, so the count is capped per zoom: the list is
+  // sorted by population, and a label that arrives before its city has geometry
+  // is worse than no label.
+  const cityLabels = useMemo(() => {
+    if (!layers.labels) return [];
+    const limit = zoom >= 8 ? 70 : zoom >= 6.5 ? 40 : 18;
+    return CITY_LABELS.filter((c) => zoom >= c.minZoom).slice(0, limit);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layers.labels, zoom]);
+
   const officialFeatures = useMemo(
     () => incidents.filter((f) => f.properties.kind === "official"),
     [incidents],
   );
   officialRef.current = officialFeatures;
+  incidentsRef.current = incidents;
+
+  // MapLibre draws official perimeters (not deck.gl), so "no recent heat" has
+  // to travel as a feature property and an expression in the paint.
+  const officialGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: officialFeatures.map((f) => ({
+        type: "Feature" as const,
+        id: f.id,
+        properties: { id: f.id, name: f.properties.name, stale: staleIds.has(f.id) ? 1 : 0 },
+        geometry: f.geometry,
+      })),
+    }),
+    [officialFeatures, staleIds],
+  );
+  const officialGeoJSONRef = useRef(officialGeoJSON);
+  officialGeoJSONRef.current = officialGeoJSON;
 
   useEffect(() => {
     const src = map?.getSource("official-perimeters") as
       | { setData?: (data: unknown) => void }
       | undefined;
     if (!src?.setData) return;
-    src.setData({
-      type: "FeatureCollection",
-      features: officialFeatures.map((f) => ({
-        type: "Feature",
-        id: f.id,
-        properties: { id: f.id, name: f.properties.name },
-        geometry: f.geometry,
-      })),
-    });
+    src.setData(officialGeoJSON as never);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [officialFeatures, map, mapType]);
+  }, [officialGeoJSON, map, mapType]);
 
   useEffect(() => {
     if (map) applyOfficialVisibility(map);
@@ -460,6 +512,7 @@ export default function MapCanvas({
         layers.estimated && profile.estimatedFill ? estimated : [],
         layers.estimated,
         theme,
+        staleIds,
       ),
       // The pale casing is a second full polygon path pass; skipped when the
       // device budget is tight.
@@ -468,8 +521,10 @@ export default function MapCanvas({
         : []),
       PULSE_SLOT,
       h3Layer(hexes, layers.hex, theme),
-      markerLayer(officialFeatures, layers.official, theme, "official"),
-      markerLayer(estimated, layers.estimated, theme, "estimated"),
+      markerLayer(officialFeatures, layers.official, theme, "official", staleIds),
+      markerLayer(estimated, layers.estimated, theme, "estimated", staleIds),
+      // Invisible, generous hit targets: above the markers, below the labels.
+      incidentHitLayer(incidents),
       ...hotspotLayers({
         items: hotspots,
         now,
@@ -497,7 +552,7 @@ export default function MapCanvas({
       }),
       new ScatterplotLayer({
         id: "city-dots",
-        data: layers.labels ? CITY_LABELS.filter((c) => zoom >= Math.max(c.minZoom, 6.2)) : [],
+        data: cityLabels,
         pickable: false,
         getPosition: (d: (typeof CITY_LABELS)[number]) => [d.lon, d.lat],
         getRadius: 1.1,
@@ -506,7 +561,7 @@ export default function MapCanvas({
       }),
       new TextLayer({
         id: "city-labels",
-        data: layers.labels ? CITY_LABELS.filter((c) => zoom >= Math.max(c.minZoom, 6.2)) : [],
+        data: cityLabels,
         pickable: false,
         getPosition: (d: (typeof CITY_LABELS)[number]) => [d.lon, d.lat],
         getText: (d: (typeof CITY_LABELS)[number]) => d.name,
@@ -526,6 +581,7 @@ export default function MapCanvas({
         zoom,
         visible: layers.labels,
         theme,
+        staleIds,
       }),
       ...placeLayers(places, theme),
     ] as unknown[];
@@ -533,6 +589,7 @@ export default function MapCanvas({
     officialFeatures,
     estimated,
     hexes,
+    cityLabels,
     selected,
     selectedId,
     zoom,
@@ -555,6 +612,7 @@ export default function MapCanvas({
     profile.estimatedFill,
     profile.antialias,
     profile.hotspotStrokes,
+    staleIds,
   ]);
 
   /**
@@ -566,13 +624,14 @@ export default function MapCanvas({
     const out = baseLayers.slice();
     const slot = out.indexOf(PULSE_SLOT);
     if (slot >= 0) {
-      if (layers.estimated) out[slot] = estimatedOutlineLayer(estimated, pulse, layers.estimated, theme);
+      if (layers.estimated)
+        out[slot] = estimatedOutlineLayer(estimated, pulse, layers.estimated, theme, staleIds);
       else out.splice(slot, 1);
     } else if (layers.estimated) {
-      out.push(estimatedOutlineLayer(estimated, pulse, layers.estimated, theme));
+      out.push(estimatedOutlineLayer(estimated, pulse, layers.estimated, theme, staleIds));
     }
     return out.filter((layer) => layer !== PULSE_SLOT) as never[];
-  }, [baseLayers, estimated, pulse, layers.estimated, theme]);
+  }, [baseLayers, estimated, pulse, layers.estimated, theme, staleIds]);
 
   /* -------------------------------- overlay ----------------------------- */
   useEffect(() => {
@@ -582,16 +641,29 @@ export default function MapCanvas({
       // deck.gl otherwise renders at the full DPR (3x on many phones), which is
       // ~9x the fragment work for a map that is mostly flat dots and lines.
       useDevicePixels: profile.dpr,
+      // deck.gl's default tolerance is a few pixels; thumbs need more.
+      pickingRadius: 10,
       layers: [],
       onClick: (info) => {
         const obj = info.object as
-          | { properties?: { kind?: string; source?: string }; id?: string }
+          | {
+              properties?: { kind?: string; source?: string; lon?: number; lat?: number };
+              id?: string;
+            }
           | null;
         if (obj?.properties?.kind && obj.id) {
           interactionRef.current.onSelect(obj.id);
-        } else {
-          interactionRef.current.onSelect(null);
+          return;
         }
+        // A thermal speck is not a fire: select the fire it belongs to.
+        const lon = obj?.properties?.lon;
+        const lat = obj?.properties?.lat;
+        if (obj?.properties?.source && typeof lon === "number" && typeof lat === "number") {
+          const near = nearestIncident(incidentsRef.current, lon, lat);
+          interactionRef.current.onSelect(near);
+          return;
+        }
+        interactionRef.current.onSelect(null);
       },
       onHover: (info) => {
         if (!info.object || info.x == null || info.y == null) {

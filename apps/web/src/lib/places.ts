@@ -1,4 +1,5 @@
 import type { StyleSpecification } from "maplibre-gl";
+import { CITIES } from "./cities.generated";
 
 /** Static cartographic context: Atlas/Ink need no glyph server or network. */
 
@@ -9,35 +10,8 @@ export interface PlaceLabel {
   minZoom: number;
 }
 
-export const CITY_LABELS: PlaceLabel[] = [
-  { name: "Seattle", lon: -122.332, lat: 47.606, minZoom: 4.4 },
-  { name: "Portland", lon: -122.676, lat: 45.523, minZoom: 4.4 },
-  { name: "Sacramento", lon: -121.494, lat: 38.582, minZoom: 4.2 },
-  { name: "San Francisco", lon: -122.419, lat: 37.775, minZoom: 4.2 },
-  { name: "San Jose", lon: -121.886, lat: 37.338, minZoom: 5.0 },
-  { name: "Los Angeles", lon: -118.244, lat: 34.052, minZoom: 4.0 },
-  { name: "San Diego", lon: -117.161, lat: 32.716, minZoom: 4.6 },
-  { name: "Las Vegas", lon: -115.139, lat: 36.169, minZoom: 4.2 },
-  { name: "Reno", lon: -119.814, lat: 39.529, minZoom: 4.6 },
-  { name: "Phoenix", lon: -112.074, lat: 33.448, minZoom: 4.2 },
-  { name: "Tucson", lon: -110.974, lat: 32.222, minZoom: 4.8 },
-  { name: "Albuquerque", lon: -106.65, lat: 35.084, minZoom: 4.4 },
-  { name: "Denver", lon: -104.99, lat: 39.739, minZoom: 4.2 },
-  { name: "Salt Lake City", lon: -111.891, lat: 40.76, minZoom: 4.4 },
-  { name: "Boise", lon: -116.202, lat: 43.615, minZoom: 4.4 },
-  { name: "Spokane", lon: -117.426, lat: 47.658, minZoom: 4.8 },
-  { name: "Missoula", lon: -113.994, lat: 46.872, minZoom: 5.0 },
-  { name: "Billings", lon: -108.5, lat: 45.783, minZoom: 4.8 },
-  { name: "Cheyenne", lon: -104.82, lat: 41.14, minZoom: 4.8 },
-  { name: "El Paso", lon: -106.485, lat: 31.761, minZoom: 4.6 },
-  { name: "Austin", lon: -97.743, lat: 30.267, minZoom: 4.4 },
-  { name: "Dallas", lon: -96.797, lat: 32.776, minZoom: 4.4 },
-  { name: "Oklahoma City", lon: -97.516, lat: 35.468, minZoom: 4.8 },
-  { name: "Kansas City", lon: -94.578, lat: 39.099, minZoom: 4.6 },
-  { name: "Minneapolis", lon: -93.265, lat: 44.978, minZoom: 4.4 },
-  { name: "Chicago", lon: -87.63, lat: 41.878, minZoom: 4.2 },
-  { name: "St. Louis", lon: -90.199, lat: 38.627, minZoom: 4.6 },
-];
+/** 100k+ populated places from the same Natural Earth snapshot as the basemap. */
+export const CITY_LABELS: PlaceLabel[] = CITIES;
 
 export const STATE_LABELS: PlaceLabel[] = [
   { name: "WASHINGTON", lon: -120.5, lat: 47.4, minZoom: 3.4 },
@@ -231,6 +205,24 @@ function vectorLayers(ink: boolean): unknown[] {
       paint: { "fill-color": ink ? "#151515" : "#f3f0e8" },
     },
     {
+      // Built-up land: it is what makes a zoomed-in fire readable as "this is
+      // next to people", and it is cheaper than a raster.
+      id: "urban",
+      type: "fill",
+      source: BASEMAP_SOURCE,
+      "source-layer": "urban",
+      minzoom: 5,
+      paint: { "fill-color": ink ? "#1b1b1b" : "#e9e4d9", "fill-opacity": 0.9 },
+    },
+    {
+      id: "parks",
+      type: "fill",
+      source: BASEMAP_SOURCE,
+      "source-layer": "parks",
+      minzoom: 4,
+      paint: { "fill-color": ink ? "#141a16" : "#e6ece2", "fill-opacity": 0.85 },
+    },
+    {
       id: "lakes",
       type: "fill",
       source: BASEMAP_SOURCE,
@@ -252,6 +244,30 @@ function vectorLayers(ink: boolean): unknown[] {
       paint: {
         "line-color": ink ? "#242424" : "#c6d3cf",
         "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.3, 7, 0.9],
+      },
+    },
+    {
+      id: "roads-minor",
+      type: "line",
+      source: BASEMAP_SOURCE,
+      "source-layer": "roads",
+      minzoom: 5,
+      filter: ["==", ["get", "class"], "minor"],
+      paint: {
+        "line-color": ink ? "#242424" : "#e3ddce",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.4, 10, 1.2],
+      },
+    },
+    {
+      id: "roads-major",
+      type: "line",
+      source: BASEMAP_SOURCE,
+      "source-layer": "roads",
+      minzoom: 4,
+      filter: ["==", ["get", "class"], "major"],
+      paint: {
+        "line-color": ink ? "#3a3a3a" : "#cfc6b2",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.5, 7, 1.1, 12, 2.4],
       },
     },
     {
@@ -344,7 +360,7 @@ export function styleFor(type: MapType): StyleSpecification {
         type: "vector",
         tiles: [`${BASEMAP_URL}/{z}/{x}/{y}`],
         minzoom: 0,
-        maxzoom: 6,
+        maxzoom: 7,
         bounds: [-142, 3, -48, 62],
         attribution: "Natural Earth",
       },

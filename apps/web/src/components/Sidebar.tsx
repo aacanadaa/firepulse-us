@@ -6,11 +6,14 @@ import type { KindFilter, FeedTab } from "@/lib/select";
 import type { FeedStatus } from "@/lib/store";
 import { formatMinutes, formatNumber } from "@/lib/format";
 import IncidentCard from "./IncidentCard";
+import type { FireLiveness } from "@/lib/liveness";
 import { feedProblem } from "./SourceHealth";
 import { Icon } from "./ui";
 
 interface Props {
   incidents: IncidentFeature[];
+  /** Per-fire "is it still burning?" state, keyed by incident id. */
+  liveness: Map<string, FireLiveness>;
   allCounts: { early: number; official: number; hotspots: number };
   now: number;
   cursor: number | null;
@@ -60,6 +63,7 @@ const CONFIDENCE = [
 
 export default function Sidebar({
   incidents,
+  liveness,
   allCounts,
   now,
   cursor,
@@ -207,6 +211,7 @@ export default function Sidebar({
                   incident={incident}
                   selected={selectedId === incident.id}
                   now={now}
+                  liveness={liveness.get(incident.id) ?? null}
                   onSelect={onSelect}
                 />
               </div>

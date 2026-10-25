@@ -184,6 +184,7 @@ export function estimatedZoneLayer(
   incidents: IncidentFeature[],
   visible: boolean,
   theme: MapTheme,
+  staleIds?: Set<string>,
 ) {
   return new PolygonLayer<IncidentFeature>({
     id: "estimated-zones",
@@ -194,10 +195,12 @@ export function estimatedZoneLayer(
     getPolygon: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
     getFillColor: (f: IncidentFeature) => {
       const fill = rgba(theme.estimatedFill);
+      const stale = staleIds?.has(f.id) ?? false;
+      if (stale) return withAlpha(fill, Math.round(fill[3] * 0.35));
       return unconfirmed(f) ? withAlpha(fill, Math.round(fill[3] * 0.4)) : fill;
     },
     stroked: false,
-    updateTriggers: { getFillColor: theme.estimatedFill },
+    updateTriggers: { getFillColor: [theme.estimatedFill, staleIds] },
   });
 }
 
@@ -228,6 +231,7 @@ export function estimatedOutlineLayer(
   pulse: number,
   visible: boolean,
   theme: MapTheme,
+  staleIds?: Set<string>,
 ) {
   return new PathLayer<IncidentFeature>({
     id: "estimated-outline",
@@ -235,8 +239,12 @@ export function estimatedOutlineLayer(
     visible,
     pickable: false,
     getPath: (f: IncidentFeature) => f.geometry.coordinates[0] ?? [],
-    getColor: (f: IncidentFeature) =>
-      withAlpha(rgba(theme.estimated), unconfirmed(f) ? 90 : 150 + Math.round(pulse * 90)),
+    getColor: (f: IncidentFeature) => {
+      // Fires with no recent heat fade back instead of disappearing: they are
+      // still part of the record, just not part of tonight's picture.
+      if (staleIds?.has(f.id)) return withAlpha(rgba(theme.estimated), 60);
+      return withAlpha(rgba(theme.estimated), unconfirmed(f) ? 90 : 150 + Math.round(pulse * 90));
+    },
     widthUnits: "pixels",
     getWidth: 1.4,
     widthMinPixels: 1.1,
@@ -244,7 +252,7 @@ export function estimatedOutlineLayer(
     capRounded: false,
     getDashArray: [5, 3],
     extensions: [dashExtension],
-    updateTriggers: { getColor: [Math.round(pulse * 10), theme.estimated] },
+    updateTriggers: { getColor: [Math.round(pulse * 10), theme.estimated, staleIds] },
   } as never);
 }
 
@@ -253,6 +261,7 @@ export function markerLayer(
   visible: boolean,
   theme: MapTheme,
   kind: "estimated" | "official",
+  staleIds?: Set<string>,
 ) {
   const estimated = kind === "estimated";
   return new ScatterplotLayer<IncidentFeature>({
@@ -263,17 +272,45 @@ export function markerLayer(
     radiusUnits: "pixels",
     radiusMinPixels: 2.8,
     radiusMaxPixels: 6,
-    getRadius: (f: IncidentFeature) => (unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4),
+    getRadius: (f: IncidentFeature) =>
+      staleIds?.has(f.id) ? 2.2 : unconfirmed(f) ? 2.6 : estimated ? 4 : 3.4,
     // Estimates are rings; official points are filled. This keeps the
     // provisional marker distinguishable from a thermal speck at any zoom.
     filled: !estimated,
     stroked: true,
-    getLineColor: (f: IncidentFeature) =>
-      unconfirmed(f) ? withAlpha(rgba(theme.estimated), 70) : rgba(estimated ? theme.estimated : theme.markerStroke),
+    getLineColor: (f: IncidentFeature) => {
+      const base = unconfirmed(f)
+        ? withAlpha(rgba(theme.estimated), 70)
+        : rgba(estimated ? theme.estimated : theme.markerStroke);
+      return staleIds?.has(f.id) ? withAlpha(base, 90) : base;
+    },
     lineWidthUnits: "pixels",
     getLineWidth: (f: IncidentFeature) => (unconfirmed(f) ? 1 : estimated ? 1.6 : 1.2),
     getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],
     getFillColor: rgba(theme.official),
+  });
+}
+
+/**
+ * Invisible 14 px hit target per fire.
+ *
+ * The dots on the map are 3–4 px wide (they must be, or the whole country turns
+ * into one blob at zoom 4). Nobody can hit a 3 px target with a thumb, so this
+ * layer sits above the markers, draws nothing, and turns a near miss into a
+ * selection.
+ */
+export function incidentHitLayer(incidents: IncidentFeature[]) {
+  return new ScatterplotLayer<IncidentFeature>({
+    id: "incident-hit",
+    data: incidents,
+    pickable: true,
+    filled: true,
+    stroked: false,
+    radiusUnits: "pixels",
+    getRadius: 15,
+    getPosition: (f: IncidentFeature) => [f.properties.lon, f.properties.lat],
+    getFillColor: [0, 0, 0, 1],
+    updateTriggers: { getPosition: [incidents.length] },
   });
 }
 
@@ -310,9 +347,15 @@ export function selectedOutlineLayer(incident: IncidentFeature | null, theme: Ma
 
 export function incidentLabelLayer(
   incidents: IncidentFeature[],
-  opts: { selectedId: string | null; zoom: number; visible: boolean; theme: MapTheme },
+  opts: {
+    selectedId: string | null;
+    zoom: number;
+    visible: boolean;
+    theme: MapTheme;
+    staleIds?: Set<string>;
+  },
 ) {
-  const { selectedId, zoom, visible, theme } = opts;
+  const { selectedId, zoom, visible, theme, staleIds } = opts;
 
   // Unconfirmed satellite heat is too common to label; it's named when selected.
   const ranked = incidents.filter((f) => f.id === selectedId || !unconfirmed(f)).sort((a, b) => {
@@ -353,7 +396,10 @@ export function incidentLabelLayer(
       return [f.properties.lon, maxLat];
     },
     getText: (f: IncidentFeature) => f.properties.name,
-    getColor: rgba(theme.labelText),
+    getColor: (f: IncidentFeature) => {
+      const base = rgba(theme.labelText);
+      return staleIds?.has(f.id) ? withAlpha(base, 120) : base;
+    },
     getSize: (f) => (f.id === selectedId ? 12 : 10.5),
     sizeUnits: "pixels",
     getPixelOffset: (f) => [0, f.id === selectedId ? -16 : -12],
@@ -365,6 +411,7 @@ export function incidentLabelLayer(
     fontSettings: { sdf: true, buffer: 8, radius: 5 },
     outlineWidth: 2.2,
     outlineColor: rgba(theme.labelOutline, 230),
+    updateTriggers: { getColor: [staleIds, theme.labelText] },
   });
 }
 

@@ -3,17 +3,20 @@
 import type { IncidentFeature } from "@firepulse/protocol";
 import { formatAcres, formatAge, formatNumber, plainFireStatus } from "@/lib/format";
 import { isNew } from "@/lib/select";
+import type { FireLiveness } from "@/lib/liveness";
 import { SourceLabel } from "./ui";
 
 export default function IncidentCard({
   incident,
   selected,
   now,
+  liveness,
   onSelect,
 }: {
   incident: IncidentFeature;
   selected: boolean;
   now: number;
+  liveness: FireLiveness | null;
   onSelect: (id: string) => void;
 }) {
   const p = incident.properties;
@@ -40,8 +43,25 @@ export default function IncidentCard({
         <span className={`kind-sq ${early ? "" : "official"}`} aria-hidden="true" />
         <span className="row-name">{p.name}</span>
         {fresh ? <span className="new-flag">New</span> : null}
-        <span className="row-age" title={inReplayPast ? "Fire age at this replay moment" : "Time since last signal"}>
-          {formatAge(age)}
+        {liveness && liveness.state !== "active" ? (
+          <span
+            className={`live-flag ${liveness.state}`}
+            title={`${liveness.label} — ${liveness.detail}`}
+          >
+            {liveness.label}
+          </span>
+        ) : null}
+        <span
+          className="row-age"
+          title={
+            inReplayPast
+              ? "Fire age at this replay moment"
+              : liveness
+                ? `${liveness.label} — ${liveness.detail}`
+                : "Time since last signal"
+          }
+        >
+          {liveness && !inReplayPast ? liveness.detail.replace("no new heat for ", "").replace("nothing detected for ", "") : formatAge(age)}
         </span>
       </div>
 

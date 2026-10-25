@@ -7,6 +7,7 @@ import {
   type SpreadForecast,
 } from "@firepulse/protocol";
 import { formatAcres, formatAge, formatDate, formatMw, formatNumber, plainFireStatus } from "@/lib/format";
+import type { FireLiveness } from "@/lib/liveness";
 import type { MapType } from "@/lib/places";
 import { Icon, Sparkline } from "./ui";
 import SpreadSection from "./SpreadSection";
@@ -20,6 +21,7 @@ interface Props {
   loading: boolean;
   spread: SpreadForecast | null;
   spreadLoading: boolean;
+  liveness: FireLiveness | null;
   mapType: MapType;
 }
 
@@ -32,6 +34,7 @@ export default function DetailPanel({
   loading,
   spread,
   spreadLoading,
+  liveness,
   mapType,
 }: Props) {
   const p = incident.properties;
@@ -97,6 +100,13 @@ export default function DetailPanel({
         <p style={{ margin: "7px 0 0", fontSize: 11.5, color: "var(--ink-2)", lineHeight: 1.5 }}>
           {plainFireStatus(p, now)}
         </p>
+        {liveness ? (
+          <div className={`ins-live ${liveness.state}`} title="Derived from the newest evidence for this fire">
+            <span className="ins-live-dot" aria-hidden="true" />
+            <span className="ins-live-label">{liveness.label}</span>
+            <span className="ins-live-detail">{liveness.detail}</span>
+          </div>
+        ) : null}
         <div className="ins-links">
           <a
             href={`https://forecast.weather.gov/MapClick.php?lat=${p.lat.toFixed(4)}&lon=${p.lon.toFixed(4)}`}

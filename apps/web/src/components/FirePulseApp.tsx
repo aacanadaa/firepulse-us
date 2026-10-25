@@ -9,6 +9,7 @@ import type { MapType } from "@/lib/places";
 import { useNearby, usePlaces, type WatchedPlace } from "@/lib/myplaces";
 import { registerServiceWorker, useAccount, usePush } from "@/lib/account";
 import { perfFromQuery } from "@/lib/perf";
+import { buildLiveness, isStale } from "@/lib/liveness";
 import { useTheme } from "@/lib/theme";
 import type { LayerFlags } from "./MapCanvas";
 import AppHeader from "./AppHeader";
@@ -264,6 +265,19 @@ export default function FirePulseApp() {
     [dataVersion, cursor],
   );
 
+  // "Does this fire still exist?" — one pass over the current data.
+  const liveness = useMemo(
+    () => buildLiveness(mapIncidents, hotspots, displayNow),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [mapIncidents, hotspots],
+  );
+
+  const staleIds = useMemo(() => {
+    const out = new Set<string>();
+    for (const [id, l] of liveness) if (isStale(l.state)) out.add(id);
+    return out;
+  }, [liveness]);
+
   const counts = useMemo(() => {
     let early = 0;
     let official = 0;
@@ -510,6 +524,7 @@ export default function FirePulseApp() {
         {sidebarOpen ? (
           <Sidebar
             incidents={incidents}
+            liveness={liveness}
             allCounts={counts}
             now={displayNow}
             cursor={cursor}
@@ -584,6 +599,7 @@ export default function FirePulseApp() {
             mapType={mapType}
             focusNonce={focusNonce}
             hazards={hazards}
+            staleIds={staleIds}
             places={placesApi.places}
             focusArea={focusArea}
             onSelect={(id) => handleSelect(id)}
@@ -640,6 +656,7 @@ export default function FirePulseApp() {
             loading={detailLoading}
             spread={selectedSpread}
             spreadLoading={spread.loading}
+            liveness={selectedIncident ? (liveness.get(selectedIncident.id) ?? null) : null}
             mapType={mapType}
           />
         ) : null}

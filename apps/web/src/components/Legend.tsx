@@ -142,6 +142,54 @@ export default function Legend({ open, onClose, mapType }: Props) {
         </div>
 
         <div className="acct-section">
+          <div className="kicker">Is it still burning?</div>
+          <p className="acct-hint" style={{ marginTop: 0 }}>
+            Every fire carries the newest evidence we have for it. Fires with no heat for a day
+            fade back on the map and are labelled, so the picture shows tonight, not the season.
+          </p>
+          <div className="key-row">
+            <span className="key-swatch key-inline">
+              <Dot fill="var(--forest)" size={8} />
+            </span>
+            <span>
+              <b>Active</b>
+              <em>Heat or a feed update within 90 minutes</em>
+            </span>
+          </div>
+          <div className="key-row">
+            <span className="key-swatch key-inline">
+              <Dot fill="var(--warn)" size={8} />
+            </span>
+            <span>
+              <b>Cooling</b>
+              <em>No new heat for 1.5–6 hours</em>
+            </span>
+          </div>
+          <div className="key-row">
+            <span className="key-swatch key-inline">
+              <Dot stroke="var(--faint)" size={9} />
+            </span>
+            <span>
+              <b>Quiet / no recent heat</b>
+              <em>Nothing detected for 6 h or more · drawn back</em>
+            </span>
+          </div>
+          <div className="key-row">
+            <span className="key-swatch key-inline">
+              <Dot stroke="var(--faint)" size={11} />
+            </span>
+            <span>
+              <b>Presumed out</b>
+              <em>Contained, and no heat for 6 h</em>
+            </span>
+          </div>
+          <p className="acct-hint">
+            Click anywhere near a dot: the map picks the nearest fire within 6 km, so you do not
+            have to hit a three-pixel target.
+          </p>
+        </div>
+
+        <div className="acct-section">
           <div className="kicker">Warnings and weather</div>
           <div className="key-row">
             <span

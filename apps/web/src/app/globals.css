@@ -2873,3 +2873,87 @@ button {
     box-shadow: none;
   }
 }
+
+/* ==========================================================================
+   Fire liveness — is it still burning?
+   ========================================================================== */
+
+.live-flag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--surface-muted);
+}
+
+.live-flag.cooling {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.live-flag.quiet {
+  color: var(--muted);
+  border-color: var(--line-strong);
+}
+
+.live-flag.dormant,
+.live-flag.presumed_out {
+  color: var(--faint);
+  border-style: dashed;
+}
+
+.ins-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  background: var(--surface-muted);
+}
+
+.ins-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--forest);
+  flex: none;
+}
+
+.ins-live.cooling .ins-live-dot {
+  background: var(--warn);
+}
+
+.ins-live.quiet .ins-live-dot {
+  background: var(--faint);
+}
+
+.ins-live.dormant .ins-live-dot,
+.ins-live.presumed_out .ins-live-dot {
+  background: transparent;
+  border: 1px solid var(--faint);
+}
+
+.ins-live-label {
+  color: var(--ink);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ins-live-detail {
+  color: var(--muted);
+}
