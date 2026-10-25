@@ -368,15 +368,29 @@ function vectorLayers(ink: boolean): unknown[] {
     },
     // Roads, thin to thick. Motorways first so junctions read correctly.
     {
+      // Residential streets arrive later than service roads: drawing every
+      // driveway at z13 turns a suburb into noise.
       id: "osm-road-minor",
       type: "line",
       source: "osm",
       "source-layer": "transportation",
-      minzoom: 13,
-      filter: ["match", ["get", "class"], ["minor", "service", "track"], true, false],
+      minzoom: 13.5,
+      filter: ["match", ["get", "class"], ["minor", "residential"], true, false],
       paint: {
-        "line-color": ink ? "#262626" : "#e0d8c6",
-        "line-width": ["interpolate", ["linear"], ["zoom"], 13, 0.5, 16, 2.4],
+        "line-color": ink ? "#2a2a2a" : "#d8cfb9",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 13.5, 0.5, 16, 2.2],
+      },
+    },
+    {
+      id: "osm-road-service",
+      type: "line",
+      source: "osm",
+      "source-layer": "transportation",
+      minzoom: 15,
+      filter: ["match", ["get", "class"], ["service", "track"], true, false],
+      paint: {
+        "line-color": ink ? "#232323" : "#e6dfcf",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 15, 0.4, 17, 1.4],
       },
     },
     {
