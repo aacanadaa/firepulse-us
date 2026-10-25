@@ -1,0 +1,41 @@
+name: keep API awake
+
+# Render's free plan spins a service down after ~15 minutes without traffic,
+# which drops every WebSocket and makes the next visitor wait ~50 s for a cold
+# start. This ping keeps the API warm. Scheduled workflows can start a few
+# minutes late, so /15 would be too slow; every 10 minutes leaves one retry.
+#
+# Delete this workflow once the API moves to a paid plan (which never sleeps).
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET /api/health
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            code=$(curl -sS -m 90 -o /tmp/health.json -w '%{http_code}' https://firepulse-api.onrender.com/api/health || echo 000)
+            echo "attempt $attempt -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              python3 - <<'PY'
+              import json
+              d = json.load(open('/tmp/health.json'))
+              print('ok:', d.get('ok'), '| store:', d.get('store'), '| feeds down:',
+                    [s['id'] for s in d.get('sources', []) if s.get('status') not in ('ok', 'pending')])
+              PY
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "API did not answer 200 after three attempts" >&2
+          exit 1

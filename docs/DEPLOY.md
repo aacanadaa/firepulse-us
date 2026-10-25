@@ -75,6 +75,12 @@ Redeploy, or push an empty commit): an existing build keeps the old URL forever.
 
 ## 3b. The API must not live on a laptop
 
+**Current production:** API on Render at `https://firepulse-api.onrender.com`
+(store: Postgres/PostGIS), web on `https://firepulse-us.vercel.app`. Nothing
+runs on a laptop: no tunnel, no local API. The free plan sleeps after ~15 idle
+minutes, so `.github/workflows/keepalive.yml` pings the health endpoint every
+10 minutes; delete that workflow when the service moves to a paid plan.
+
 The API holds WebSockets and runs timers, so it needs a host that keeps a
 process alive. `render.yaml` in the repository root is a Render Blueprint that
 creates the API (Docker, from `apps/api/Dockerfile`), its PostGIS database, and
