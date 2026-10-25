@@ -1,5 +1,5 @@
 /**
- * FirePulse US — shared domain types.
+ * FirePulse US: shared domain types.
  *
  * These types are the contract between the ingestion/fusion backend and the
  * WebGL map client. Every signal that enters the system is normalised into a
@@ -12,24 +12,24 @@
 /* ------------------------------------------------------------------ */
 
 export const SOURCE_IDS = [
-  // Tier 1 — sub-5-minute, unverified
+  // Tier 1: sub-5-minute, unverified
   "cad",
   "scanner",
   "alertca",
   "crowd",
-  // Tier 2 — satellite thermal
+  // Tier 2: satellite thermal
   "goes16",
   "goes18",
   // GOES-East since April 2025 (replaced GOES-16).
   "goes19",
   "viirs",
   "modis",
-  // Tier 3 — environmental context
+  // Tier 3: environmental context
   "purpleair",
   "airnow",
   "raws",
   "nws",
-  // Tier 4 — official ground truth
+  // Tier 4: official ground truth
   "wfigs",
   "nifc",
   "calfire",

@@ -1,4 +1,4 @@
-# FirePulse US — System Architecture
+# FirePulse US: System Architecture
 
 > Real-time wildfire detection that treats *unverified, fast signals* as first-class
 > evidence and fuses them into **Early Active Fire Zones** long before a government
@@ -88,7 +88,7 @@ Mermaid source for editing: [`architecture.mmd`](./architecture.mmd).
 | Transport | WebSocket | WebSocket, Redis fan-out across API pods |
 
 `DATA_MODE=simulation|live|hybrid` switches the adapters only. The fusion,
-diffing, confidence and client code are identical — the simulator is a
+diffing, confidence and client code are identical; the simulator is a
 contract-compatible adapter, not a mock of the pipeline.
 
 ---
@@ -114,13 +114,13 @@ they produce incidents, not point evidence.
 
 Implemented:
 
-- [`sources/live.ts`](../apps/api/src/sources/live.ts) — NASA FIRMS CSV
+- [`sources/live.ts`](../apps/api/src/sources/live.ts): NASA FIRMS CSV
   (VIIRS/MODIS), NIFC WFIGS GeoJSON (points buffered by acreage, polygons used
   as-is), NWS Red Flag alerts.
-- [`sources/simulated.ts`](../apps/api/src/sources/simulated.ts) — six adapters
+- [`sources/simulated.ts`](../apps/api/src/sources/simulated.ts): six adapters
   driven by a deterministic generator with production cadences
   ([`simulation/generator.ts`](../apps/api/src/simulation/generator.ts)).
-- Tier-1 push webhooks — `POST /api/v1/hooks/cad` (PulsePoint-shaped) and
+- Tier-1 push webhooks: `POST /api/v1/hooks/cad` (PulsePoint-shaped) and
   `POST /api/v1/hooks/crowd` (photo + bearing). Both support HMAC-SHA256 via
   `INGEST_WEBHOOK_SECRET` and re-run fusion immediately.
 
@@ -193,11 +193,11 @@ idempotent.
 
 ### Redis (production)
 
-- `fp:geo:incidents` — GEO set of incident centroids; viewport reads use
+- `fp:geo:incidents`: GEO set of incident centroids; viewport reads use
   `GEOSEARCH ... BYBOX ... ASC` then one `HMGET` of serialised features. This is
   the sub-50 ms bbox path.
-- `fp:inc:payload` — hash of incident ID → GeoJSON.
-- `fp:deltas` — Pub/Sub channel. The ingestion leader computes a diff once;
+- `fp:inc:payload`: hash of incident ID → GeoJSON.
+- `fp:deltas`: Pub/Sub channel. The ingestion leader computes a diff once;
   sibling API pods relay it to their own WebSocket sessions. Cache is always
   best-effort: a Redis outage degrades to PostGIS/engine reads, never errors.
 
@@ -273,7 +273,7 @@ Calibration (see [`confidence.test.ts`](../apps/api/test/confidence.test.ts)):
 | CAD + GOES + camera + crowd + PM2.5 (5 modalities) | ~96% |
 | NIFC perimeter | **100%** |
 
-The UI exposes the full equation, every factor, and each source's own weight —
+The UI exposes the full equation, every factor, and each source's own weight, so
 confidence is auditable, not a black box.
 
 ### 5.3 Absorbing estimates into ground truth
@@ -289,7 +289,7 @@ one. On merge:
    CAD` is a legitimate source list);
 4. a row is written to `estimate_merge`;
 5. the delta stream removes the estimate and upserts the official fire in the
-   same frame — the client transitions atomically, with no flicker.
+   same frame; the client transitions atomically, with no flicker.
 
 Official revisions preserve `precursor` (see `ingestOfficial`), so the warning
 story survives every subsequent perimeter update.
@@ -341,7 +341,7 @@ Source: [`apps/api/src/realtime/hub.ts`](../apps/api/src/realtime/hub.ts),
 
 ### Fan-out and scale
 
-Per tick cost is `O(changed_features + clients × bbox_test)` — no full dataset
+Per tick cost is `O(changed_features + clients × bbox_test)`, with no full dataset
 scan. In multi-pod deployments, Redis Pub/Sub carries incident diffs to sibling
 pods (`Hub.publish(..., fromRemote)`), while a single ingestion leader owns the
 hotspot sequence. Heartbeat every 30 s terminates half-open sockets; caps are
@@ -474,15 +474,15 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8790
 
 ### Scaling path
 
-1. **Ingestion** — one leader per source group (advisory lock or Kubernetes
+1. **Ingestion**: one leader per source group (advisory lock or Kubernetes
    Lease) so `dedupe_key` remains authoritative; stateless API replicas relay
    diffs over Redis.
-2. **Storage** — PostGIS with monthly `raw_signal` partitions (BRIN + local
+2. **Storage**: PostGIS with monthly `raw_signal` partitions (BRIN + local
    GiST), read replicas for viewport queries, `signal_rollup_hourly` for >24 h
    density, TimescaleDB optional for the firehose.
-3. **Transport** — one WS process per pod, sticky sessions not required because
+3. **Transport**: one WS process per pod, sticky sessions not required because
    every pod can serve any viewport from its own snapshot + shared deltas.
-4. **Geometry** — for >10⁵ simultaneous polygons, precompute vector tiles per
+4. **Geometry**: for >10⁵ simultaneous polygons, precompute vector tiles per
    zoom (`ST_AsMVT` materialized views) and render perimeters in MapLibre;
    deck keeps points/wind.
 

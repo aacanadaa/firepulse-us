@@ -180,7 +180,7 @@ export default function Sidebar({
             {cursor != null ? (
               <div className="replay-banner">
                 <Icon name="clock" size={11} />
-                <span>Replay — showing what was known at this moment</span>
+                <span>Replay: showing what was known at this moment</span>
               </div>
             ) : null}
           </>

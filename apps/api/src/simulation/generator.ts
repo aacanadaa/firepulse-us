@@ -73,12 +73,12 @@ export interface OfficialUpdate {
 }
 
 /**
- * FireSimulation — deterministic, multi-tier synthetic feed.
+ * FireSimulation: deterministic, multi-tier synthetic feed.
  *
  * It exists so the entire pipeline (ingest → fuse → diff → WS) can be
  * exercised at production cadences without API keys: GOES scans every 5
  * minutes, VIIRS every 10, CAD dispatches a minute after ignition, and
- * government perimeters arrive 7–21 minutes late — exactly the latency
+ * government perimeters arrive 7–21 minutes late, exactly the latency
  * budget FirePulse is designed to beat.
  */
 export class FireSimulation {
@@ -117,7 +117,7 @@ export class FireSimulation {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Tier 2 — satellite thermal                                        */
+  /* Tier 2: satellite thermal                                        */
   /* ---------------------------------------------------------------- */
 
   private thermal(
@@ -188,7 +188,7 @@ export class FireSimulation {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Tier 1 — dispatch, radio, public reports, cameras                 */
+  /* Tier 1: dispatch, radio, public reports, cameras                 */
   /* ---------------------------------------------------------------- */
 
   private dispatch(
@@ -324,7 +324,7 @@ export class FireSimulation {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Tier 3 — air quality + RAWS                                       */
+  /* Tier 3: air quality + RAWS                                       */
   /* ---------------------------------------------------------------- */
 
   private context(
@@ -402,7 +402,7 @@ export class FireSimulation {
   }
 
   /* ---------------------------------------------------------------- */
-  /* Tier 4 — official ground truth                                    */
+  /* Tier 4: official ground truth                                    */
   /* ---------------------------------------------------------------- */
 
   /** Latest official state per fire whose publication falls in [from, to). */
@@ -644,7 +644,7 @@ export class FireSimulation {
         observedAt: isoNoMs(t),
         receivedAt: isoNoMs(now),
         providerConfidence: 1,
-        label: "Red Flag Warning — Los Angeles / Ventura interior",
+        label: "Red Flag Warning: Los Angeles / Ventura interior",
         meta: { dedupeKey: `nws-rfw-${t}`, event: "Red Flag Warning", expires: isoNoMs(t + 12 * HOUR) },
       },
     ];

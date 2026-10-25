@@ -7,7 +7,7 @@ import type {
 } from "./types.js";
 
 /**
- * In-memory store — same contract as PostgresStore, zero infrastructure.
+ * In-memory store: same contract as PostgresStore, zero infrastructure.
  * Used for local dev, unit tests and the public demo deployment. Insertion
  * order is preserved so the diff engine remains deterministic.
  */

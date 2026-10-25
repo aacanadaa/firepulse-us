@@ -1,5 +1,5 @@
 -- =====================================================================
---  003 — accounts, watched places, push subscriptions, alert deliveries
+--  003: accounts, watched places, push subscriptions, alert deliveries
 -- =====================================================================
 
 create table if not exists firepulse.app_user (

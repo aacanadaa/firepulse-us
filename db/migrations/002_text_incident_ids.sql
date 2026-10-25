@@ -1,5 +1,5 @@
 -- =====================================================================
---  002 — incident ids are text
+--  002: incident ids are text
 --
 --  Official incidents keep their source id (e.g. "wfigs-2026-CABDU-001234"),
 --  which is not a UUID, so every insert of a live WFIGS incident failed.

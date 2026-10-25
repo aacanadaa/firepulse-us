@@ -54,12 +54,12 @@ async function chooseStore(): Promise<Store> {
       if (requirePostgres) throw err;
       log.warn(
         { err: err instanceof Error ? err.message : err },
-        "DATABASE_URL set but unreachable — falling back to in-memory store",
+        "DATABASE_URL set but unreachable, falling back to in-memory store",
       );
       await pg.close().catch(() => undefined);
     }
   }
-  log.warn("no DATABASE_URL — using in-memory store (dev/demo mode)");
+  log.warn("no DATABASE_URL, using in-memory store (dev/demo mode)");
   return new MemoryStore();
 }
 
@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     if (process.env.AIRNOW_API_KEY) adapters.push(createAirNowAdapter(process.env.AIRNOW_API_KEY, airQuality));
     else log.warn("no AIRNOW_API_KEY: no air quality readings");
     if (adapters.length === 0) {
-      log.warn("live mode with no FIRMS_MAP_KEY — no satellite detections; only WFIGS/NWS will ingest");
+      log.warn("live mode with no FIRMS_MAP_KEY: no satellite detections; only WFIGS/NWS will ingest");
     }
   }
 

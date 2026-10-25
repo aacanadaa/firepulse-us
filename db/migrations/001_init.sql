@@ -1,5 +1,5 @@
 -- =====================================================================
---  FirePulse US — core schema
+--  FirePulse US: core schema
 --  PostgreSQL 15+ / PostGIS 3.3+
 --
 --  Conventions
@@ -48,7 +48,7 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------
--- 1. Raw signals — the immutable firehose
+-- 1. Raw signals: the immutable firehose
 --    Every tier lands here first, normalised but unopinionated.
 -- ---------------------------------------------------------------------
 create table if not exists firepulse.raw_signal (
@@ -91,7 +91,7 @@ comment on table firepulse.raw_signal is
   'Immutable normalised signals from all four ingestion tiers. Retained 24h hot, then rolled into signal_rollup_hourly.';
 
 -- ---------------------------------------------------------------------
--- 2. Incidents — fused estimates and official ground truth in one table
+-- 2. Incidents: fused estimates and official ground truth in one table
 --    Keeping both in one relation means the feed, the map and the diff
 --    engine never need a union: `kind` is the discriminator.
 -- ---------------------------------------------------------------------
@@ -157,7 +157,7 @@ comment on table firepulse.fire_incident is
   'Fused fire objects. kind=estimated are algorithmic Early Active Fire Zones; kind=official are NIFC/WFIGS/CAL FIRE ground truth.';
 
 -- ---------------------------------------------------------------------
--- 3. Evidence — why the engine believes an incident exists
+-- 3. Evidence: why the engine believes an incident exists
 -- ---------------------------------------------------------------------
 create table if not exists firepulse.incident_evidence (
   incident_id         uuid not null references firepulse.fire_incident (id) on delete cascade,
@@ -188,7 +188,7 @@ create table if not exists firepulse.incident_signal (
 create index if not exists incident_signal_signal on firepulse.incident_signal (signal_id);
 
 -- ---------------------------------------------------------------------
--- 5. Official perimeters — SCD-2 revision history
+-- 5. Official perimeters: SCD-2 revision history
 --    Each revision closes the previous row's validity. The scrubber
 --    joins on the evaluated-at timestamp to show when a perimeter was
 --    actually drawn vs. when we detected heat.
@@ -276,7 +276,7 @@ create table if not exists firepulse.wind_field (
 );
 
 -- ---------------------------------------------------------------------
--- 9. Hourly rollup — keeps 7 days of density data for the scrubber
+-- 9. Hourly rollup: keeps 7 days of density data for the scrubber
 --    without scanning 10^8 raw rows.
 -- ---------------------------------------------------------------------
 create table if not exists firepulse.signal_rollup_hourly (

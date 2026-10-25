@@ -32,7 +32,7 @@ interface Task {
  * Adapters pull on their own cadence; every batch is normalised (H3 cell,
  * stable id, received-at) and appended to the store + hotspot log. A single
  * fusion loop at 4 s turns the evidence window into diffs. Adapters never
- * talk to the WebSocket layer — that separation is what makes back-pressure
+ * talk to the WebSocket layer; that separation is what makes back-pressure
  * and replay possible.
  */
 export class Pipeline {

@@ -1,5 +1,5 @@
 -- =====================================================================
---  004 — GOES-19 (GOES-East since April 2025) as a signal source
+--  004: GOES-19 (GOES-East since April 2025) as a signal source
 -- =====================================================================
 
 alter domain firepulse.signal_source drop constraint if exists signal_source_check;

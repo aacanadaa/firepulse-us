@@ -37,8 +37,8 @@ export interface FusionAudit {
 
 /**
  * Persistence port. Two implementations ship:
- *   - `PostgresStore` — the production system of record (PostGIS).
- *   - `MemoryStore`   — dependency-free dev/demo store with identical
+ *   - `PostgresStore`: the production system of record (PostGIS).
+ *   - `MemoryStore`: dependency-free dev/demo store with identical
  *                       semantics, used when DATABASE_URL is absent.
  */
 export interface Store {

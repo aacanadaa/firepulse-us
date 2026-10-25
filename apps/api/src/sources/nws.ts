@@ -185,7 +185,7 @@ export function hazardContextSignals(alerts: HazardAlertFeature[], receivedAt: s
         observedAt: p.effective,
         receivedAt,
         providerConfidence: 1,
-        label: `${p.event} — ${p.areaDesc.slice(0, 80)}`,
+        label: `${p.event}: ${p.areaDesc.slice(0, 80)}`,
         meta: {
           dedupeKey: id,
           event: p.event,

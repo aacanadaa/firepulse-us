@@ -1,5 +1,5 @@
 /**
- * FirePulse US — Early-Estimate Fusion confidence model.
+ * FirePulse US: Early-Estimate Fusion confidence model.
  *
  * Design goals
  * ------------
@@ -7,7 +7,7 @@
  * 2. Two *independent* modalities (dispatch + thermal) must land near 85%.
  * 3. Official ground truth is 100% by definition (it short-circuits).
  * 4. Correlated sensors must not be double counted (two satellites see the
- *    same pixel of flame — that is one detection family, not two).
+ *    same pixel of flame; that is one detection family, not two).
  * 5. Evidence must decay: a 4-hour-old CAD dispatch is weak corroboration.
  *
  * The model is a log-odds-free, explainable noisy-OR:

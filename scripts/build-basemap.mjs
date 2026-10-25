@@ -249,7 +249,7 @@ async function main() {
     tiles,
     metadata: {
       name: "FirePulse US basemap",
-      description: "Natural Earth 1:110m/1:50m — public domain",
+      description: "Natural Earth 1:110m/1:50m, public domain",
       attribution: "Natural Earth",
       type: "vector",
       format: "pbf",

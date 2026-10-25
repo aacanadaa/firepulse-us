@@ -45,7 +45,7 @@ function sampleField(
 
 /**
  * Monochrome wind texture. Particles exist to show direction and relative
- * velocity — not to become a second colour system. Short graphite strokes,
+ * velocity, not to become a second colour system. Short graphite strokes,
  * alpha by speed, no glow.
  */
 export default function WindParticles({ map, field, enabled, theme, profile }: Props) {

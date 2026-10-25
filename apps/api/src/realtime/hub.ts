@@ -53,7 +53,7 @@ export interface HubDeps {
  *
  * Each client holds a viewport, an optional historical cursor, a confidence
  * floor and the hotspot sequence it has already received. A publish is
- * therefore O(changed features) to produce and O(clients) tiny bbox tests —
+ * therefore O(changed features) to produce and O(clients) tiny bbox tests,
  * never a full dataset re-fetch.
  */
 export class RealtimeHub {
