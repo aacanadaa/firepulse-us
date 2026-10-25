@@ -21,6 +21,7 @@ export default function DocPage({ title, updated, draft, children }: { title: st
           <Link href="/about">About &amp; data</Link>
           <Link href="/privacy">Privacy</Link>
           <Link href="/terms">Terms</Link>
+          <Link href="/status">Status</Link>
         </nav>
       </header>
       <main className="doc">

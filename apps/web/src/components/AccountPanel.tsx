@@ -384,6 +384,7 @@ export default function AccountPanel({
           <a href="/about">About &amp; data</a>
           <a href="/privacy">Privacy</a>
           <a href="/terms">Terms</a>
+          <a href="/status">Status</a>
         </p>
       </aside>
     </>

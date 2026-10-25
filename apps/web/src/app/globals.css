@@ -2639,7 +2639,9 @@ button {
 
 .doc-head nav {
   display: flex;
-  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 14px;
   font-size: 12px;
 }
 
@@ -2714,6 +2716,115 @@ button {
 
 .legal-links a {
   color: var(--muted);
+}
+
+/* ------------------------------ status page ------------------------------- */
+
+.status-summary {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.status-summary.down {
+  border-color: var(--danger);
+}
+
+.status-monitor {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.doc .status-row h2 {
+  margin: 0;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.status-pill.up .status-dot {
+  background: var(--forest);
+}
+
+.status-pill.down .status-dot {
+  background: var(--danger);
+}
+
+.status-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.status-stats dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.status-stats dd {
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.doc .status-incidents {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.status-incidents li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.status-incidents li span:first-child {
+  min-width: 150px;
+  color: var(--muted);
+}
+
+.status-quiet,
+.status-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.status-note {
+  margin-top: 28px;
+}
+
+@media (max-width: 520px) {
+  .status-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 /* ==========================================================================

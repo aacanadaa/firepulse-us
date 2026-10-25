@@ -352,6 +352,7 @@ export default function AppHeader({
                   <a href="/about">About &amp; data sources</a>
                   <a href="/privacy">Privacy</a>
                   <a href="/terms">Terms</a>
+                  <a href="/status">Status</a>
                 </div>
 
                 <div className="pop-section">
