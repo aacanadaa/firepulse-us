@@ -14,8 +14,9 @@ databases:
     databaseName: firepulse
     user: firepulse
     postgresMajorVersion: "16"
-    # The free tier expires and sleeps; Starter keeps the API's data durable.
-    plan: basic-256mb
+    # Free tier: no cost, but Render expires free databases ~30 days after
+    # creation. Upgrade to basic-256mb for anything long-lived.
+    plan: free
     region: oregon
 
 services:
@@ -25,9 +26,10 @@ services:
     dockerfilePath: ./apps/api/Dockerfile
     dockerContext: .
     region: oregon
-    # Starter (not Free): free instances sleep after 15 minutes idle, which
-    # drops every WebSocket and makes the first visitor wait for a cold start.
-    plan: starter
+    # Free instances sleep after ~15 minutes idle, dropping every WebSocket.
+    # The scheduled workflow in .github/workflows/keepalive.yml pings the API
+    # so it does not do that mid-demo. Use `starter` for a real launch.
+    plan: free
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
