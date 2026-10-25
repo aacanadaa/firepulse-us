@@ -722,7 +722,7 @@ export default function FirePulseApp() {
                 }}
               />
             </div>
-            <div className="mono" style={{ fontSize: 9, color: "var(--faint)", marginTop: 9 }}>
+            <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 9 }}>
               {feed.status} · {store.stats?.totalSignals ?? 0} signals
             </div>
           </div>

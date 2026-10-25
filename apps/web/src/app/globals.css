@@ -73,7 +73,12 @@ body {
   line-height: 1.5;
   font-feature-settings: "cv05" 1, "cv11" 1, "ss01" 1;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  /* optimizeLegibility forces kerning/ligature shaping that reads as smeared
+     at the 8-10 px sizes this UI uses. Default shaping plus real font sizes is
+     what stays legible when the browser is zoomed out. */
+  text-rendering: auto;
+  text-size-adjust: 100%;
   overflow: hidden;
 }
 
@@ -103,12 +108,13 @@ button {
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  /* No negative tracking: at these sizes it closes the digits up. */
+  letter-spacing: 0;
 }
 
 .kicker {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -291,7 +297,7 @@ button {
   background: var(--surface);
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -364,7 +370,7 @@ button {
 
 .wordmark span {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.08em;
   color: var(--faint);
@@ -417,7 +423,7 @@ button {
 
 .hdr-stat .k {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -464,7 +470,7 @@ button {
 
 .status .label {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--ink-2);
@@ -649,7 +655,7 @@ button {
 
 .row-age {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--faint);
   white-space: nowrap;
   flex: none;
@@ -671,7 +677,7 @@ button {
   gap: 8px;
   margin-top: 7px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -702,7 +708,7 @@ button {
 
 .source {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -755,7 +761,7 @@ button {
 
 .new-flag {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--accent);
@@ -772,7 +778,7 @@ button {
   gap: 8px;
   background: var(--surface);
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   color: var(--faint);
   letter-spacing: 0.02em;
 }
@@ -783,7 +789,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 3px;
   padding: 1px 4px;
-  font-size: 8px;
+  font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -798,7 +804,7 @@ button {
   align-items: center;
   gap: 7px;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.02em;
   color: #8a4b22;
 }
@@ -987,7 +993,7 @@ button {
 .provenance dt {
   color: var(--faint);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   padding-top: 1px;
@@ -1033,7 +1039,7 @@ button {
 
 .neighbor .dist {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: var(--faint);
 }
 
@@ -1104,7 +1110,7 @@ button {
 
 .tl-time .d {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 0.03em;
   color: var(--faint);
   white-space: nowrap;
@@ -1195,7 +1201,7 @@ button {
   border: 0;
   background: transparent;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--faint);
   height: 22px;
   padding: 0 5px;
@@ -1220,7 +1226,7 @@ button {
   border-radius: var(--r-md);
   background: var(--surface);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   color: var(--ink-2);
@@ -1279,7 +1285,7 @@ button {
   border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.94);
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--muted);
   text-transform: uppercase;
@@ -1327,7 +1333,7 @@ button {
   border-radius: var(--r-sm);
   background: rgba(255, 255, 255, 0.94);
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1419,7 +1425,7 @@ button {
   grid-template-columns: 1fr auto;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: var(--muted);
 }
 
@@ -1433,7 +1439,7 @@ button {
 .maplibregl-ctrl-attrib,
 .maplibregl-ctrl-bottom-right {
   font-family: var(--mono) !important;
-  font-size: 8px !important;
+  font-size: 10.5px !important;
   opacity: 0.72;
 }
 
@@ -1482,7 +1488,7 @@ button {
   border-top: 0 !important;
   color: var(--muted) !important;
   font-family: var(--mono) !important;
-  font-size: 8px !important;
+  font-size: 10.5px !important;
   height: 14px !important;
   line-height: 12px !important;
   box-shadow: none !important;
@@ -1668,7 +1674,7 @@ button {
   .segment {
     height: 20px;
     padding: 0 5px;
-    font-size: 9px;
+    font-size: 10px;
     letter-spacing: 0;
   }
 
@@ -1678,7 +1684,7 @@ button {
   }
 
   .status .label {
-    font-size: 8px;
+    font-size: 10.5px;
   }
 
   .popover {
@@ -1730,7 +1736,7 @@ button {
   }
   .segment {
     padding: 0 4px;
-    font-size: 8.5px;
+    font-size: 10px;
   }
   .hdr-actions {
     gap: 4px;
@@ -1744,7 +1750,7 @@ button {
 @media (max-width: 420px) {
   .segment {
     padding: 0 3px;
-    font-size: 8px;
+    font-size: 10.5px;
   }
   .speed {
     display: none;
@@ -1798,7 +1804,7 @@ button {
   background-repeat: no-repeat;
   background-position: right 6px center;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: var(--muted);
   cursor: pointer;
   transition: border-color 150ms ease-out, color 150ms ease-out;
@@ -1863,7 +1869,7 @@ button {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1899,7 +1905,7 @@ button {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--muted);
@@ -1926,7 +1932,7 @@ button {
   padding-top: 9px;
   border-top: 1px solid var(--line-soft);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   line-height: 1.5;
   color: var(--ink-2);
 }
@@ -2177,7 +2183,7 @@ button {
 .np-alert-until,
 .np-alert-meta {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
   color: var(--muted);
 }
@@ -2267,12 +2273,12 @@ button {
 
 .np-fire-where span {
   color: var(--faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .np-more {
   margin: 4px 0 6px;
-  font-size: 9.5px;
+  font-size: 10.5px;
   color: var(--faint);
 }
 
@@ -2503,7 +2509,7 @@ button {
 }
 
 .acct-history small {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--faint);
 }
 
@@ -2566,7 +2572,7 @@ button {
 }
 
 .np-air .mono {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--faint);
 }
 
@@ -2887,7 +2893,7 @@ button {
   border: 1px solid var(--line-strong);
   border-radius: 3px;
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10.5px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--muted);
@@ -2919,7 +2925,7 @@ button {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.03em;
   color: var(--muted);
   background: var(--surface-muted);

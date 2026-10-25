@@ -118,7 +118,7 @@ export default function Sidebar({
             </h2>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)" }}>
               {mode === "near" ? `${placeCount}/5` : `${incidents.length}/${total}`}
             </span>
             <button
@@ -164,7 +164,7 @@ export default function Sidebar({
                 </button>
               ))}
               <span className="divider" aria-hidden="true" />
-              <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 8, letterSpacing: "0.08em" }}>
+              <label className="kicker" htmlFor="confidence-filter" style={{ fontSize: 10.5, letterSpacing: "0.08em" }}>
                 Min
               </label>
               <select

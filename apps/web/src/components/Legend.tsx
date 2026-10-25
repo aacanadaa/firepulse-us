@@ -279,7 +279,7 @@ export default function Legend({ open, onClose, mapType }: Props) {
         <div className="acct-section">
           <div className="kicker">Basemap</div>
           <div style={{ fontSize: 11.5, color: "var(--ink-2)" }}>{basemap?.name}</div>
-          <div className="mono" style={{ fontSize: 9.5, color: "var(--faint)", marginTop: 2 }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>
             {basemap?.note}
           </div>
           <p className="acct-hint" style={{ marginTop: 6 }}>

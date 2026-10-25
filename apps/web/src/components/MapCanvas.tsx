@@ -782,13 +782,13 @@ export default function MapCanvas({
         >
           {hover.incident ? (
             <>
-              <div className="kicker" style={{ fontSize: 8.5 }}>
+              <div className="kicker" style={{ fontSize: 10 }}>
                 {hover.incident.properties.kind === "official" ? "Official perimeter" : "Early estimate"}
               </div>
               <div style={{ fontSize: 12, fontWeight: 550, marginTop: 2 }}>
                 {hover.incident.properties.name}
               </div>
-              <div className="mono" style={{ fontSize: 9.5, color: "var(--muted)", marginTop: 3 }}>
+              <div className="mono" style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 3 }}>
                 {hover.incident.properties.confidence}% ·{" "}
                 {formatAcres(hover.incident.properties.areaAcres)} ·{" "}
                 {hover.incident.properties.hotspotCount} hotspots
@@ -796,7 +796,7 @@ export default function MapCanvas({
             </>
           ) : hover.hotspot ? (
             <>
-              <div className="kicker" style={{ fontSize: 8.5 }}>
+              <div className="kicker" style={{ fontSize: 10 }}>
                 {sourceMeta(hover.hotspot.properties.source).short}
               </div>
               <div className="mono" style={{ fontSize: 10, marginTop: 2 }}>

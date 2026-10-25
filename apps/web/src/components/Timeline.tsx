@@ -100,7 +100,7 @@ export default function Timeline({
         <div className="tl-time">
           <span className="t">
             {formatClock(effective)}
-            <span className="mono" style={{ fontSize: 8.5, color: "var(--faint)", marginLeft: 5 }}>
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)", marginLeft: 5 }}>
               PT
             </span>
           </span>

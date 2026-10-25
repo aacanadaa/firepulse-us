@@ -132,7 +132,7 @@ export default function AppHeader({
       <div className="hdr-title">
         <span>National fire picture</span>
         <span className="slash">/</span>
-        <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", letterSpacing: "0.06em" }}>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)", letterSpacing: "0.06em" }}>
           CONUS
         </span>
       </div>
@@ -244,7 +244,7 @@ export default function AppHeader({
                         <span style={{ flex: 1 }}>{item.label}</span>
                         <span
                           className="mono"
-                          style={{ fontSize: 8.5, color: "var(--faint)", letterSpacing: "0.03em" }}
+                          style={{ fontSize: 10, color: "var(--faint)", letterSpacing: "0.03em" }}
                         >
                           {item.note}
                         </span>
@@ -289,7 +289,7 @@ export default function AppHeader({
                     </span>
                     <span>
                       Thermal age{" "}
-                      <span className="mono" style={{ fontSize: 9, color: "var(--faint)" }}>
+                      <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
                         {thermalSwatches(mapType)
                           .map((s) => s.label)
                           .join(" / ")}
@@ -334,7 +334,7 @@ export default function AppHeader({
                     Basemap
                   </div>
                   <div style={{ fontSize: 11, color: "var(--ink-2)" }}>{type?.name}</div>
-                  <div className="mono" style={{ fontSize: 9, color: "var(--faint)", marginTop: 2 }}>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 2 }}>
                     {type?.note}
                   </div>
                 </div>
@@ -381,7 +381,7 @@ export default function AppHeader({
                       className="mono"
                       style={{
                         marginTop: 9,
-                        fontSize: 8.5,
+                        fontSize: 10,
                         color: "var(--faint)",
                         letterSpacing: "0.03em",
                         borderTop: "1px solid var(--line)",
