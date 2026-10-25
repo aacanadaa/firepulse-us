@@ -102,6 +102,9 @@ export default function FirePulseApp() {
   });
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
     if (typeof window === "undefined") return "near";
+    // ?feed=all / ?feed=near open a specific feed directly.
+    const want = new URLSearchParams(window.location.search).get("feed");
+    if (want === "all" || want === "near") return want;
     try {
       return window.localStorage.getItem(MODE_KEY) === "all" ? "all" : "near";
     } catch {
