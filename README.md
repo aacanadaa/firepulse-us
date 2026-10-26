@@ -1,7 +1,6 @@
 # FirePulse US
 
-**Live: <https://firepulse-us.vercel.app>** — web on Vercel, API and PostGIS on
-Render. Nothing runs on a laptop.
+**Live: <https://firepulse-us.vercel.app>** 
 
 **Real-time wildfire detection that does not wait for the paperwork.**
 
