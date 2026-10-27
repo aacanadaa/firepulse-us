@@ -124,8 +124,6 @@ slightly, the boot progress line advances, and wind particles move.
 
 ## Architecture
 
-![Architecture](./docs/architecture.svg)
-
 Deep dive: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 [mermaid source](./docs/architecture.mmd) · [schema diagram](./docs/schema.svg) ·
 [schema source](./docs/schema.mmd) · [PostGIS DDL](./db/migrations/001_init.sql).
