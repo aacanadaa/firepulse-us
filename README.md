@@ -1,7 +1,5 @@
 # FirePulse US
 
-**Real-time wildfire detection that does not wait for the paperwork.**
-
 Traditional wildfire maps show you fires the government has already surveyed and
 published, often hours after ignition. FirePulse ingests the signals that exist
 *now*: CAD dispatch, scanner audio, PTZ cameras, crowdsourced sightings, GOES and
@@ -121,8 +119,6 @@ slightly, the boot progress line advances, and wind particles move.
 ---
 
 ## Architecture
-
-![Architecture](./docs/architecture.svg)
 
 Deep dive: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) ·
 [mermaid source](./docs/architecture.mmd) · [schema diagram](./docs/schema.svg) ·
