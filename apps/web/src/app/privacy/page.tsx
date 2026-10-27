@@ -39,7 +39,7 @@ export default function Privacy() {
 
       <h2>Who else sees data</h2>
       <ul>
-        <li>Address searches go to the US Census Bureau geocoder and to Photon (komoot).</li>
+        <li>Address searches go to the US Census Bureau geocoder and to Photon (komoot) and OpenStreetMap Nominatim.</li>
         <li>Alerts travel through your browser&apos;s push service, encrypted so only your device can read them.</li>
         <li>If you choose the Topographic or Satellite map, map images load from Esri or EOX, which see your IP address.</li>
         <li>Our hosting providers process this data for us. Server logs record IP addresses for security and rate limiting.</li>

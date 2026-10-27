@@ -1,11 +1,14 @@
 import type { GeocodeResult } from "@firepulse/protocol";
 
 /* ==================================================================== */
-/*  Place search: US Census for street addresses, Photon for place names  */
+/*  Place search: Census for addresses, Photon (then Nominatim) for names */
 /* ==================================================================== */
 
 const CENSUS_URL = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress";
 const PHOTON_URL = process.env.PHOTON_URL ?? "https://photon.komoot.io/api/";
+const NOMINATIM_URL = process.env.NOMINATIM_URL ?? "https://nominatim.openstreetmap.org/search";
+/** The public Nominatim usage policy allows at most one request per second. */
+const NOMINATIM_MIN_INTERVAL_MS = 1_100;
 const MAX_RESULTS = 6;
 const CACHE_TTL_MS = 24 * 3_600_000;
 const CACHE_MAX = 1000;
@@ -54,12 +57,36 @@ export function parsePhoton(json: unknown): GeocodeResult[] {
   return out;
 }
 
+export function parseNominatim(json: unknown): GeocodeResult[] {
+  if (!Array.isArray(json)) return [];
+  const out: GeocodeResult[] = [];
+  const seen = new Set<string>();
+  for (const r of json as { lat?: string; lon?: string; name?: string; address?: Record<string, string | undefined> }[]) {
+    const a = r.address ?? {};
+    if (a.country_code !== "us") continue;
+    const lat = Number(r.lat);
+    const lon = Number(r.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const street = a.house_number && a.road ? `${a.house_number} ${a.road}` : a.road;
+    const city = a.city ?? a.town ?? a.village ?? a.hamlet;
+    const name = r.name || street;
+    const parts = [name, city !== name ? city : undefined, a.county ? countyLabel(a.county) : undefined, a.state];
+    const label = parts.filter((x, i, all): x is string => Boolean(x) && all.indexOf(x) === i).join(", ");
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    out.push({ label, lat, lon, source: "nominatim" });
+  }
+  return out;
+}
+
 function countyLabel(county: string): string {
   return /county|parish|borough/i.test(county) ? county : `${county} County`;
 }
 
 export class Geocoder {
   private cache = new Map<string, { at: number; results: GeocodeResult[] }>();
+  private nominatimQueue: Promise<unknown> = Promise.resolve();
+  private nominatimLastAt = 0;
 
   constructor(
     private readonly opts: { userAgent: string; fetch?: Fetch; timeoutMs?: number },
@@ -72,7 +99,11 @@ export class Geocoder {
     const hit = this.cache.get(key);
     if (hit && now - hit.at < CACHE_TTL_MS) return hit.results;
 
-    const order = looksLikeStreetAddress(q) ? [this.census, this.photon] : [this.photon, this.census];
+    // Photon's public server is light-use only and rejects some cloud hosts, so
+    // Nominatim backs it up for place names.
+    const order = looksLikeStreetAddress(q)
+      ? [this.census, this.photon, this.nominatim]
+      : [this.photon, this.nominatim, this.census];
     let results: GeocodeResult[] = [];
     let lastErr: unknown;
     for (const provider of order) {
@@ -108,5 +139,25 @@ export class Geocoder {
   private async photon(q: string): Promise<GeocodeResult[]> {
     const params = new URLSearchParams({ q, limit: "10", lang: "en" });
     return parsePhoton(await this.get(`${PHOTON_URL}?${params}`));
+  }
+
+  private async nominatim(q: string): Promise<GeocodeResult[]> {
+    const params = new URLSearchParams({
+      q,
+      format: "jsonv2",
+      addressdetails: "1",
+      countrycodes: "us",
+      limit: "10",
+      "accept-language": "en",
+    });
+    // Queue calls so they go out no faster than the usage policy allows.
+    const run = this.nominatimQueue.then(async () => {
+      const wait = this.nominatimLastAt + NOMINATIM_MIN_INTERVAL_MS - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      this.nominatimLastAt = Date.now();
+      return this.get(`${NOMINATIM_URL}?${params}`);
+    });
+    this.nominatimQueue = run.catch(() => undefined);
+    return parseNominatim(await run);
   }
 }

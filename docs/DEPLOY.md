@@ -117,9 +117,10 @@ Publish it when you launch.
   an Android phone in Chrome, and on an iPhone after **Add to Home Screen**:
   iOS only delivers web push to installed apps.
 - Review `/privacy` and `/terms`, then set `NEXT_PUBLIC_LEGAL_REVIEWED=true`.
-- Address search uses the public Photon server, which is meant for light use.
-  Before a public launch, point `PHOTON_URL` at your own Photon instance or a
-  paid geocoder.
+- Place search uses the public Photon server, falling back to public Nominatim
+  (throttled to one request a second). Both are meant for light use. Before a
+  public launch, point `PHOTON_URL` and `NOMINATIM_URL` at your own instances
+  or a paid geocoder, and set `FIREPULSE_USER_AGENT` with a contact address.
 - Rebuild the static heat-source mask monthly so new gas flares are filtered:
   `FIRMS_MAP_KEY=... pnpm --filter @firepulse/api heat-mask:build`, then commit
   `apps/api/data/heat-mask.json`.

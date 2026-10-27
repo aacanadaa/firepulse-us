@@ -12,7 +12,7 @@ import {
 } from "@firepulse/protocol";
 import { nearbySummary } from "../src/nearby.js";
 import { HazardLayer } from "../src/realtime/hazards.js";
-import { Geocoder, looksLikeStreetAddress, parseCensus, parsePhoton } from "../src/geocode.js";
+import { Geocoder, looksLikeStreetAddress, parseCensus, parseNominatim, parsePhoton } from "../src/geocode.js";
 
 const NOW = Date.parse("2026-10-22T20:00:00Z");
 const HOME = { lon: -121.6, lat: 39.76 };
@@ -160,6 +160,14 @@ describe("place search", () => {
     // Paradise, Newfoundland is filtered out; Paradise, Butte County is kept.
     expect(photon.some((r) => r.label.includes("Newfoundland"))).toBe(false);
     expect(photon.some((r) => r.label === "Paradise, Butte County, California")).toBe(true);
+
+    const nominatim = parseNominatim(fixture("nominatim-paradise.json"));
+    expect(nominatim.every((r) => r.source === "nominatim")).toBe(true);
+    // The Mono County town and hamlet share a label and collapse to one result.
+    expect(nominatim.map((r) => r.label)).toEqual([
+      "Paradise, Butte County, California",
+      "Paradise, Mono County, California",
+    ]);
   });
 
   it("falls back to the other provider and caches results", async () => {
@@ -169,13 +177,29 @@ describe("place search", () => {
       fetch: async (url) => {
         calls.push(new URL(url).host);
         if (url.includes("photon")) return new Response(JSON.stringify({ features: [] }));
+        if (url.includes("nominatim")) return new Response("[]");
         return new Response(JSON.stringify(fixture("census-whitehouse.json")));
       },
     });
     const results = await geocoder.search("White House", NOW);
-    expect(calls).toEqual(["photon.komoot.io", "geocoding.geo.census.gov"]);
+    expect(calls).toEqual(["photon.komoot.io", "nominatim.openstreetmap.org", "geocoding.geo.census.gov"]);
     expect(results[0]!.source).toBe("census");
     await geocoder.search("white  house", NOW + 1000);
-    expect(calls).toHaveLength(2);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("uses Nominatim when Photon rejects the request", async () => {
+    const calls: string[] = [];
+    const geocoder = new Geocoder({
+      userAgent: "test",
+      fetch: async (url) => {
+        calls.push(new URL(url).host);
+        if (url.includes("photon")) return new Response("forbidden", { status: 403 });
+        return new Response(JSON.stringify(fixture("nominatim-paradise.json")));
+      },
+    });
+    const results = await geocoder.search("Paradise, CA", NOW);
+    expect(calls).toEqual(["photon.komoot.io", "nominatim.openstreetmap.org"]);
+    expect(results[0]!.label).toBe("Paradise, Butte County, California");
   });
 });

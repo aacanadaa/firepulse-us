@@ -60,7 +60,7 @@ export default function About() {
           Fire danger and drought inputs to the spread forecast:{" "}
           <a href="https://www.climatologylab.org/gridmet.html">gridMET</a>, University of California Merced.
         </li>
-        <li>Place names and address search: US Census Bureau Geocoder, and Photon by komoot with OpenStreetMap data © OpenStreetMap contributors (ODbL).</li>
+        <li>Place names and address search: US Census Bureau Geocoder, Photon by komoot and OpenStreetMap Nominatim, with OpenStreetMap data © OpenStreetMap contributors (ODbL).</li>
         <li>
           Maps: Natural Earth; Esri World Topographic Map; Sentinel-2 cloudless by EOX IT Services GmbH (contains
           modified Copernicus Sentinel data).

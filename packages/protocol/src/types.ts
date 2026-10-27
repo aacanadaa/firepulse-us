@@ -386,7 +386,7 @@ export interface GeocodeResult {
   label: string;
   lat: number;
   lon: number;
-  source: "census" | "photon";
+  source: "census" | "photon" | "nominatim";
 }
 
 /* ------------------------------------------------------------------ */

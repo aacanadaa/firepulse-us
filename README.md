@@ -456,7 +456,7 @@ than its `lastHotspotSeq` inside its viewport. See
 | GET | `/api/v1/hotspots?bbox=&from=&to=` | thermal window |
 | GET | `/api/v1/alerts?bbox=` | active NWS fire, evacuation and smoke alerts |
 | GET | `/api/v1/nearby?lat=&lon=&radiusKm=` | fires near a point and alerts covering it |
-| GET | `/api/v1/geocode?q=` | US place search (Census for addresses, Photon for names) |
+| GET | `/api/v1/geocode?q=` | US place search (Census for addresses, Photon then Nominatim for names) |
 | GET | `/api/v1/timeline?hours=24` | histogram + official draws |
 | GET | `/api/v1/stats` | rates, latency, fusion config |
 | GET | `/api/v1/merges` | lead-time ledger |
