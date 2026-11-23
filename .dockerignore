@@ -10,4 +10,8 @@ screenshots
 *.log
 .env
 .env.local
+**/.env
 apps/api/assets
+deploy/gce/conf.d/*.caddy
+deploy/gce/conf.d/*.yaml
+

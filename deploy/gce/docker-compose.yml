@@ -1,0 +1,70 @@
+# FirePulse API on a small VM (1 vCPU / 1 GB): PostGIS + API + Caddy (TLS).
+# The web app stays on Vercel. Redis, the GOES worker and spread are skipped.
+#
+#   cd deploy/gce && cp .env.example .env  # fill it in
+#   docker compose up -d --build
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: firepulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: firepulse
+    # Sized for 1 GB RAM shared with the API.
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=192MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U firepulse"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 320m
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/gce/Dockerfile.api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=384
+      PORT: 8790
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://firepulse:${POSTGRES_PASSWORD}@db:5432/firepulse
+      REDIS_URL: ""
+      SPREAD_ENABLED: "false"
+      TRUST_PROXY: "1"
+    expose: ["8790"]
+    depends_on:
+      db: { condition: service_healthy }
+    mem_limit: 512m
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./conf.d:/etc/caddy/conf.d:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [api]
+    mem_limit: 96m
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

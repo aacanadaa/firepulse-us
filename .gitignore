@@ -17,3 +17,7 @@ __pycache__
 
 # Spread model + static layers (large; see README "Spread forecasts")
 apps/api/assets/
+
+deploy/gce/conf.d/*.caddy
+deploy/gce/conf.d/*.yaml
+

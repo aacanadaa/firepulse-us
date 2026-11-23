@@ -1,0 +1,7 @@
+{$API_DOMAIN} {
+	import /etc/caddy/conf.d/*.caddy
+	handle {
+		encode gzip
+		reverse_proxy api:8790
+	}
+}
