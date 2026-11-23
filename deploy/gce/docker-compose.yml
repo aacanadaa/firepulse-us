@@ -1,5 +1,7 @@
 # FirePulse API on a small VM (1 vCPU / 1 GB): PostGIS + API + Caddy (TLS).
-# The web app stays on Vercel. Redis, the GOES worker and spread are skipped.
+# The web app stays on Vercel. Redis and the GOES worker are skipped.
+# Spread forecasts run one at a time; set SPREAD_ASSETS_URL in .env so the API
+# can download the model on first start (kept in the spread_assets volume).
 #
 #   cd deploy/gce && cp .env.example .env  # fill it in
 #   docker compose up -d --build
@@ -42,12 +44,16 @@ services:
       HOST: 0.0.0.0
       DATABASE_URL: postgres://firepulse:${POSTGRES_PASSWORD}@db:5432/firepulse
       REDIS_URL: ""
-      SPREAD_ENABLED: "false"
+      SPREAD_ENABLED: "true"
+      SPREAD_MAX_CONCURRENT: "1"
       TRUST_PROXY: "1"
     expose: ["8790"]
+    volumes:
+      - spread_assets:/app/apps/api/assets/spread
     depends_on:
       db: { condition: service_healthy }
-    mem_limit: 512m
+    # onnxruntime allocates outside the 384 MB V8 heap.
+    mem_limit: 650m
 
   caddy:
     image: caddy:2-alpine
@@ -66,5 +72,6 @@ services:
 
 volumes:
   pgdata:
+  spread_assets:
   caddy_data:
   caddy_config:

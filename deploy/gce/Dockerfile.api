@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
-# Lean API image for small VMs (1 GB RAM / 10 GB disk) with SPREAD_ENABLED=false.
-# Skips onnxruntime-node native binaries and devDependencies.
+# Lean API image for small VMs (1 GB RAM / 10 GB disk).
+# Skips devDependencies and install scripts. onnxruntime-node ships its
+# linux/x64 CPU binaries in the package, so spread forecasts work without its
+# postinstall. Model assets are downloaded at startup from SPREAD_ASSETS_URL.
 FROM node:22-slim AS build
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -18,8 +20,7 @@ RUN pnpm install --frozen-lockfile --filter @firepulse/protocol --filter @firepu
  && pnpm --filter @firepulse/protocol build \
  && pnpm --filter @firepulse/api build \
  && pnpm install --prod --frozen-lockfile --filter @firepulse/protocol --filter @firepulse/api --ignore-scripts \
- && rm -rf node_modules/.pnpm/onnxruntime-node@*/node_modules/onnxruntime-node/bin \
-           /pnpm/store /root/.local/share/pnpm /root/.cache /tmp/*
+ && rm -rf /pnpm/store /root/.local/share/pnpm /root/.cache /tmp/*
 
 FROM node:22-slim
 ENV NODE_ENV=production

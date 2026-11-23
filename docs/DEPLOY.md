@@ -95,6 +95,16 @@ Deploying the API there removes the only laptop dependency: the Quick Tunnel and
 its rotating hostname (see `firepulse-repoint.sh`) exist purely because the API
 currently runs next to the web app.
 
+### Spread forecasts on the GCE VM (`deploy/gce/`)
+
+The compose file sets `SPREAD_ENABLED=true` and `SPREAD_MAX_CONCURRENT=1` and
+gives the API 650 MB (onnxruntime's memory sits outside the 384 MB Node heap).
+Set `SPREAD_ASSETS_URL` in `deploy/gce/.env` to a URL holding
+`firesight-best.onnx`, `firesight-model.json` and `static_conus.tar.gz` (a
+GitHub release works). The API downloads them on first start into the
+`spread_assets` volume, so rebuilds don't fetch them again. `/api/health`
+shows `spread.state` going from `downloading` to `ready`.
+
 ## 4. GOES worker
 
 Build `apps/goes-worker/Dockerfile` (context `apps/goes-worker`) and set
